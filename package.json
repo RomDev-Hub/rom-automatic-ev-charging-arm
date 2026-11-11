@@ -1,0 +1,22 @@
+{
+  "name": "rom-automatic-ev-charging-arm",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^26.13.0",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.18.0",
+      "onFail": "error"
+    }
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "git-cliff": "2.14.2"
+  }
+}

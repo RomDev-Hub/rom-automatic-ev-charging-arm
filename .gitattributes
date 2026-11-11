@@ -1,0 +1,25 @@
+# Mọi file văn bản lưu với LF, kể cả khi commit từ Windows.
+* text=auto eol=lf
+# cmd.exe có thể nhảy sai nhãn trong goto/call khi file dùng LF, nên .bat và .cmd giữ CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+# PowerShell (.ps1) đọc được LF nên theo dòng đầu. Thêm loại script Windows khác (vd. .vbs) thì kiểm nó có cần CRLF không rồi mới thêm dòng.
+
+# File nhị phân: Git không đổi kết thúc dòng, không diff và không merge theo văn bản.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.stl binary
+*.glb binary
+*.onnx binary
+*.pt binary
+*.mcap binary
+
+# File sinh tự động: GitHub thu gọn diff và không tính vào thống kê ngôn ngữ.
+pnpm-lock.yaml linguist-generated=true
+uv.lock linguist-generated=true

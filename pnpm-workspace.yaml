@@ -1,0 +1,8 @@
+# Package trong workspace pnpm; mọi package dùng chung một lockfile ở gốc repo.
+packages:
+  - operator-ui
+
+# Chỉ cài bản đã phát hành ít nhất 3 ngày (4320 phút), tránh bản độc vừa bị đẩy lên registry.
+minimumReleaseAge: 4320
+# Chặn cài bản mới có mức tin cậy thấp hơn bản trước (vd. mất provenance), dấu hiệu gói bị chiếm quyền.
+trustPolicy: no-downgrade

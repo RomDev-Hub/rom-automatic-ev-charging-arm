@@ -1,0 +1,6 @@
+# Danh sách luật: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+# Không giới hạn độ dài dòng: tài liệu viết mỗi đoạn trên một dòng.
+MD013: false
+# CHANGELOG lặp "### Added", "### Fixed" ở mỗi phiên bản; chỉ báo trùng khi hai tiêu đề có cùng mục cha.
+MD024:
+  siblings_only: true

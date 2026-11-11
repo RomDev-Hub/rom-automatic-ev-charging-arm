@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Node
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+
+# Biến môi trường và bí mật; chỉ commit file mẫu .env.example.
+.env
+.env.*
+!.env.example
+
+# Dữ liệu chạy thật và file model nằm ngoài Git.
+*.mcap
+*.onnx
+*.pt
+*.engine
+
+# Log
+*.log

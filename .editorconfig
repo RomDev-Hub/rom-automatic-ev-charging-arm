@@ -1,0 +1,22 @@
+# Định dạng chung cho mọi editor (https://editorconfig.org).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# PEP 8: thụt lề 4 dấu cách.
+[*.py]
+indent_size = 4
+
+# Markdown dùng hai dấu cách cuối dòng để ngắt dòng, nên không tự xoá.
+[*.md]
+trim_trailing_whitespace = false
+
+# Khớp với .gitattributes: cmd.exe cần CRLF.
+[*.{bat,cmd}]
+end_of_line = crlf
