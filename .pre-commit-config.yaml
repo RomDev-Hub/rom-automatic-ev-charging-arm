@@ -43,6 +43,13 @@ repos:
   # Hook viết riêng cho repo.
   - repo: local
     hooks:
+      # Chặn thư mục nằm ngoài bố cục cho phép (CONTRIBUTING.md, mục "Bố cục thư mục").
+      - id: check-layout
+        name: check repository layout
+        entry: python scripts/check_layout.py
+        language: python
+        pass_filenames: false
+        always_run: true
       - id: commitlint
         name: commitlint
         entry: pnpm exec commitlint --edit  # luật nằm trong commitlint.config.mjs
