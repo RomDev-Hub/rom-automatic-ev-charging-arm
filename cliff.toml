@@ -1,0 +1,39 @@
+# Sinh bản nháp cho mục tiếp theo của CHANGELOG.md: pnpm exec git-cliff --unreleased
+# Bản nháp được biên tập tay rồi mới đưa vào CHANGELOG.md.
+
+[changelog]
+header = ""
+# Mỗi phiên bản một mục "## [X.Y.Z] - YYYY-MM-DD"; mỗi commit một dòng, commit không tương thích có tiền tố "Không tương thích:".
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [Unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.breaking %}Không tương thích: {% endif %}{{ commit.message | split(pat="\n") | first | trim }}
+{%- endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+# Commit không theo Conventional Commits không vào changelog.
+filter_unconventional = true
+protect_breaking_commits = true
+tag_pattern = "v[0-9].*"
+sort_commits = "oldest"
+# Mục theo Keep a Changelog; "<!-- n -->" chỉ để xếp thứ tự Added, Changed, Fixed và bị striptags xoá khi in.
+# Type khác (docs, test, build, ci, chore, style, refactor) không vào changelog.
+commit_parsers = [
+  { message = "^[a-z]+(\\([a-z0-9-]+\\))?!:", group = "<!-- 1 -->Changed" },
+  { body = "BREAKING[ -]CHANGE", group = "<!-- 1 -->Changed" },
+  { message = "^feat", group = "<!-- 0 -->Added" },
+  { message = "^(perf|revert)", group = "<!-- 1 -->Changed" },
+  { message = "^fix", group = "<!-- 4 -->Fixed" },
+  { message = ".*", skip = true },
+]

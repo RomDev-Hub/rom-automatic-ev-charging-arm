@@ -1,0 +1,92 @@
+# Phát hành khi PR từ nhánh release/X.Y.Z hoặc hotfix/X.Y.Z được merge vào main:
+# kiểm số phiên bản và mục của bản đó trong CHANGELOG.md, rồi tạo tag vX.Y.Z và GitHub Release trên commit merge.
+name: release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Token mặc định chỉ được đọc repo; chỉ job publish được ghi nội dung repo để tạo tag và GitHub Release.
+permissions:
+  contents: read
+
+# Hai lần phát hành không chạy cùng lúc.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Kiểm mọi điều kiện trước khi tạo gì: số phiên bản lấy từ tên nhánh, CHANGELOG.md có mục không trống của bản đó, tag chưa có.
+  version:
+    if: >-
+      github.event.pull_request.merged == true
+      && (startsWith(github.event.pull_request.head.ref, 'release/') || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      notes: ${{ steps.notes.outputs.notes }}
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Read the version
+        id: version
+        run: |
+          version="${HEAD_REF#*/}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::a release comes from release/X.Y.Z or hotfix/X.Y.Z, not from ${HEAD_REF}"
+            exit 1
+          fi
+          if ! grep -q "^## \[${version}\] - " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for ${version}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # Tag đã có thì dừng: tag đã đẩy lên không bao giờ bị dời hay dùng lại.
+      - name: Stop if the tag exists
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/v${VERSION}" --jq '.[].ref' | grep -qx "refs/tags/v${VERSION}"; then
+            echo "::error::tag v${VERSION} already exists"
+            exit 1
+          fi
+
+      - name: Extract the release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes="$(awk -v heading="## [${VERSION}] - " 'index($0, heading) == 1 {found = 1; next} found && /^## \[/ {exit} found {print}' CHANGELOG.md)"
+          if ! grep -q '[^[:space:]]' <<< "$notes"; then
+            echo "::error::the CHANGELOG.md section for ${VERSION} is empty"
+            exit 1
+          fi
+          {
+            echo "notes<<RELEASE_NOTES_END"
+            printf '%s\n' "$notes"
+            echo "RELEASE_NOTES_END"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      NOTES: ${{ needs.version.outputs.notes }}
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Create the tag and the GitHub Release
+        run: |
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.md"
+          gh release create "v${VERSION}" --repo "$GITHUB_REPOSITORY" --target "$MERGE_SHA" --title "v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"

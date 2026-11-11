@@ -243,7 +243,9 @@ Dòng "This reverts commit" để nguyên như Git sinh ra. Header của commit 
 
 ### Commit của bot
 
-Dependabot dùng prefix `build` và scope `deps` hoặc `deps-dev`, ví dụ `build(deps): bump …`. Commit của bot giữ tiếng Anh.
+- Prefix do `.github/dependabot.yml` đặt: cập nhật gói npm và hook pre-commit dùng `build(deps)` hoặc `build(deps-dev)`; cập nhật GitHub Actions dùng `ci(deps)`.
+- Commit của bot giữ tiếng Anh.
+- CI không chạy commitlint trên commit do `dependabot[bot]` viết, vì body commit do bot sinh có dòng dài và ghi chú phát hành.
 
 ## Nhánh và lịch sử
 

@@ -1,0 +1,131 @@
+# Kiểm tra trên mọi lần push vào main, develop và mọi PR: hook, quy ước commit, bí mật, giấy phép.
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+# Token của workflow chỉ được đọc repo.
+permissions:
+  contents: read
+
+# Lần push mới huỷ lần chạy cũ còn dở trên cùng nhánh.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Phiên bản công cụ ghim cứng; tarball gitleaks được kiểm SHA-256 trước khi chạy.
+env:
+  GITLEAKS_VERSION: 8.30.0
+  GITLEAKS_SHA256: 79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e
+  PRE_COMMIT_VERSION: 4.7.0
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      # Lấy toàn bộ lịch sử để kiểm từng commit; không lưu token vào .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Cài đúng bản pnpm ghi trong devEngines của package.json.
+      - name: Install pnpm from devEngines
+        run: |
+          version="$(node -p "require('./package.json').devEngines.packageManager.version")"
+          cd "$RUNNER_TEMP" && npm install -g "pnpm@${version}"
+
+      # Cài dependency đúng như pnpm-lock.yaml; lockfile lệch với package.json thì dừng.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Kiểm chính bộ luật commit: mẫu sai phải bị chặn, mẫu đúng phải qua.
+      - name: Commit rules reject and accept the reference messages
+        run: |
+          bad=(
+            "feat: Thêm trạng thái chờ"
+            "feat: thêm trạng thái chờ."
+            "feat(robot): thêm trạng thái chờ"
+            "update: thêm trạng thái chờ"
+            "feat(mission): thêm trạng thái chờ tài xế rời xe rồi mới cho tay máy chạy"
+            "fix(safety): chặn chạy ray khi tay chưa thu về"
+            $'fix(motion): giới hạn tốc độ tiếp cận\n\n- Why: tay chạy nhanh khi gần xe.\n- How: hạ tốc độ trong 0,3 m cuối.'
+            $'fix(motion): giới hạn tốc độ tiếp cận\n\n- How: hạ tốc độ trong 0,3 m cuối.\n- Why: tay chạy nhanh khi gần xe.\n- Test: test sim cho 3 tư thế.'
+            $'feat(api)!: đổi tên trường pha\n\n- Why: tên cũ trùng với sự kiện khác.'
+            $'feat(api): đổi tên trường pha\n\n- Why: tên cũ trùng với sự kiện khác.\n\nBREAKING CHANGE: client đọc trường mới'
+          )
+          good=(
+            "feat(mission): thêm trạng thái chờ tài xế rời xe"
+            "build(deps): bump vite from 8.1.0 to 8.1.1"
+            $'fix(motion): giới hạn tốc độ tiếp cận\n\n- Why: tay chạy nhanh khi gần xe.\n- How: hạ tốc độ trong 0,3 m cuối.\n- Test: test sim cho 3 tư thế.'
+            $'feat(api)!: đổi tên trường pha\n\n- Why: tên cũ trùng với sự kiện khác.\n\nBREAKING CHANGE: client đọc trường mới'
+            $'revert: feat(mission): thêm trạng thái chờ tài xế rời xe khi người còn gần\n\nThis reverts commit 1234567.\n\nCảm biến nhiễu làm máy chờ mãi.'
+          )
+          status=0
+          for message in "${bad[@]}"; do
+            if printf '%s\n' "$message" | pnpm exec commitlint > /dev/null; then
+              echo "::error::accepted a message that must be rejected: ${message%%$'\n'*}"; status=1
+            fi
+          done
+          for message in "${good[@]}"; do
+            if ! printf '%s\n' "$message" | pnpm exec commitlint > /dev/null; then
+              echo "::error::rejected a message that must be accepted: ${message%%$'\n'*}"; status=1
+            fi
+          done
+          exit "$status"
+
+      # Kiểm thông điệp của mọi commit trong khoảng vừa push hoặc trong PR.
+      - name: Lint commit messages
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            range="$HEAD_SHA"
+          else
+            range="${BASE_SHA}..${HEAD_SHA}"
+          fi
+          status=0
+          for sha in $(git rev-list --no-merges "$range"); do
+            # Bỏ qua commit do Dependabot viết: body do bot sinh có dòng dài và ghi chú phát hành.
+            if [ "$(git log -1 --format=%an "$sha")" = "dependabot[bot]" ]; then
+              continue
+            fi
+            git log -1 --format=%B "$sha" | pnpm exec commitlint || status=1
+          done
+          exit "$status"
+
+      # Chạy mọi hook trong .pre-commit-config.yaml trên toàn bộ file, trừ no-commit-to-branch: hook đó chặn commit ở máy, còn CI chạy trên main hay develop thì checkout đứng ở chính nhánh đó.
+      - name: Pre-commit hooks on all files
+        env:
+          SKIP: no-commit-to-branch
+        run: pipx run "pre-commit==${PRE_COMMIT_VERSION}" run --all-files --show-diff-on-failure
+
+      # Quét bí mật trên toàn bộ lịch sử commit, không chỉ phần vừa thêm.
+      - name: Scan the full history for secrets
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git . --redact --verbose
+
+      # Liệt kê giấy phép của dependency; chỉ cảnh báo, không làm CI đỏ.
+      - name: Dependency licences (warning only)
+        continue-on-error: true
+        run: |
+          pnpm licenses list --json > "$RUNNER_TEMP/licenses.json"
+          # Đoạn trong dấu nháy đơn là mã node; ${...} là biến của node chứ không phải của shell.
+          # shellcheck disable=SC2016
+          pnpm exec node -e '
+            const allowed = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD",
+              "BlueOak-1.0.0", "CC0-1.0", "Python-2.0", "MIT OR Apache-2.0", "AGPL-3.0-or-later"]);
+            const inventory = require(process.argv[1]);
+            for (const [license, packages] of Object.entries(inventory)) {
+              if (!allowed.has(license)) {
+                console.log(`::warning::licence ${license}: ${packages.map((p) => p.name).join(", ")}`);
+              }
+            }
+          ' "$RUNNER_TEMP/licenses.json"

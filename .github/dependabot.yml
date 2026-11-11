@@ -1,0 +1,51 @@
+# Dependabot mở PR cập nhật mỗi tuần, gom mọi cập nhật cùng một hệ vào một PR.
+# Bản vá bảo mật cũng gom thành một PR cho mỗi hệ, bằng nhóm có applies-to: security-updates.
+# cooldown: bản mới phải ra đủ 3 ngày mới được đề xuất, tránh bản độc vừa phát hành.
+# Prefix commit theo quy ước của repo: ci(deps) cho action; build(deps), build(deps-dev) cho gói npm và hook pre-commit.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      github-actions:
+        patterns: ["*"]
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      npm:
+        patterns: ["*"]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # Cập nhật rev (SHA kèm chú thích "frozen") trong .pre-commit-config.yaml.
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      pre-commit:
+        patterns: ["*"]
