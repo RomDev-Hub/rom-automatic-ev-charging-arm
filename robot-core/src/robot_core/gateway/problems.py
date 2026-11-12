@@ -24,6 +24,8 @@ PROBLEM_TYPE = "tag:romdev-hub.github.io,2026:ev-arm/problems/{code}"
 class ProblemCode(StrEnum):
     """Catalogue codes the gateway answers with."""
 
+    AUTH_REQUIRED = "err.auth.required"
+    INVALID_CREDENTIALS = "err.auth.invalid_credentials"
     NOT_FOUND = "err.not_found"
     INTERNAL = "err.internal"
     NOT_READY = "err.not_ready"
@@ -32,6 +34,8 @@ class ProblemCode(StrEnum):
 
 _STATUS_AND_TITLE: Mapping[ProblemCode, tuple[int, str]] = MappingProxyType(
     {
+        ProblemCode.AUTH_REQUIRED: (401, "Not signed in or the session has expired"),
+        ProblemCode.INVALID_CREDENTIALS: (401, "Incorrect username or password"),
         ProblemCode.NOT_FOUND: (404, "Requested resource not found"),
         ProblemCode.INTERNAL: (500, "Internal system error"),
         ProblemCode.NOT_READY: (503, "System not ready"),

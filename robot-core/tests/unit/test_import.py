@@ -60,6 +60,8 @@ def is_side_effect(event: str, args: tuple[Any, ...]) -> bool:
     """Tell whether an audit event writes to disk, uses a socket or starts a thread."""
     if event == "open":
         return bool(args[2] & WRITE_FLAGS)
+    if event == "socket.gethostname":
+        return False  # platform.uname() reads the host name this way; no socket
     return event in FILESYSTEM_EVENTS or event.startswith(("socket.", "_thread.start"))
 
 
