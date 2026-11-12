@@ -103,7 +103,7 @@ URDF sinh ra được kê trong `third_party/assets.yaml` cùng nguồn và gi�
 ### Xác nhận
 
 - Commit đổi hành vi ở scope `arm` phải có label Why, How và Test ([CONTRIBUTING.md](../../CONTRIBUTING.md), mục "Body").
-- Test cho từng model có sẵn; các test này cần Pinocchio nên chỉ chạy trên Linux, kể cả qua Docker ở mức 2, và job Linux của CI coi test bị bỏ qua là lỗi (ADR 0008):
+- Test cho từng model có sẵn, với dung sai theo REQ-ARM-023 ([mission-motion-arm.md](../requirements/mission-motion-arm.md)); các test này cần Pinocchio nên chỉ chạy trên Linux, kể cả qua Docker ở mức 2, và job Linux của CI coi test bị bỏ qua là lỗi (ADR 0008):
   - FK của `tool0` trong `base`, tính bằng Pinocchio trên `model.urdf`, so với FK tính theo bảng DH trong [bài DH của UR](https://www.universal-robots.com/articles/ur/application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/). Phép so này giữ luôn frame: khung 0 của bảng DH trùng `base`, không trùng `base_link`. Gói ghi góc α đã làm tròn tới 9 chữ số thập phân (`1.570796327` trong [`config/ur5e/default_kinematics.yaml`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description/blob/0eb1a861f7772fceb38510d90fa2f98ec668070c/config/ur5e/default_kinematics.yaml)) còn bảng DH dùng π/2, nên hai bên lệch cỡ 10⁻¹⁰ m và 10⁻¹⁰ rad; dung sai của phép so phải lớn hơn mức này.
   - Jacobian của Pinocchio so với sai phân hữu hạn của FK.
   - Mô-men trọng lực của Pinocchio so với mô-men tính bằng công thức tĩnh từ khối lượng và trọng tâm các khâu theo thông số của hãng.
@@ -203,4 +203,3 @@ Khối lượng, trọng tâm và ma trận quán tính của từng khâu lấy
   - Hồ sơ tool đọc lại không khớp thì xử lý thế nào, và so khớp với dung sai nào.
   - Điều kiện mở lại đầu ra chuyển động đã bị khoá vì vượt ngưỡng; bật đầu ra chuyển động đã là thao tác liên quan an toàn ở ADR 0005.
   - Model nào được chọn khi thiết bị mới cài, khi model UR dùng thật chưa chốt (ADR 0004).
-  - Dung sai của từng test kiểm chứng; chốt khi viết test.
