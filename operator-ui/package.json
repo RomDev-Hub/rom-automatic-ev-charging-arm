@@ -10,7 +10,9 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
     "lint": "eslint .",
     "format:check": "prettier --check --ignore-path ../.gitignore .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "contracts": "node contract-types.ts",
+    "contracts:check": "node contract-types.ts --check"
   },
   "dependencies": {
     "openapi-fetch": "0.17.0",

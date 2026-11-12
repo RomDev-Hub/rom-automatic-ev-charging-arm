@@ -89,6 +89,13 @@ repos:
         # Mã của operator-ui import hai file locale của robot-core.
         files: ^(operator-ui/|robot-core/src/robot_core/locales/)
         pass_filenames: false
+      # Kiểu TypeScript trong operator-ui/src/shared/contracts/ phải đúng như sinh lại từ contracts/; lệch thì chạy `pnpm --filter operator-ui run contracts`.
+      - id: contract-types-operator-ui
+        name: contract types up to date (operator-ui)
+        entry: pnpm --filter operator-ui run contracts:check
+        language: system
+        files: ^(contracts/|operator-ui/)
+        pass_filenames: false
       - id: commitlint
         name: commitlint
         entry: pnpm exec commitlint --edit  # luật nằm trong commitlint.config.mjs
