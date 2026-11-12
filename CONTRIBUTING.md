@@ -43,7 +43,7 @@ docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml run --rm core r
 docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
 ```
 
-`python scripts/e2e_sim.py` kiểm cả stack mô phỏng từ đầu tới cuối: dựng stack, tạo tài khoản quản trị, rồi qua <https://127.0.0.1:8443> kiểm trang và CSP, đăng nhập, phiên, telemetry, kênh WSS và vòng đời lệnh Dừng; xong thì xoá stack cùng volume, kể cả khi có bước trượt. Mỗi bước in một dòng, mã thoát 0 là đạt. Script chỉ dùng thư viện chuẩn của Python và lệnh `docker`, và không chạy khi project `ev-arm` đã có container.
+`python scripts/e2e_sim.py` kiểm cả stack mô phỏng từ đầu tới cuối: build image và dựng stack, tạo tài khoản quản trị, rồi qua <https://127.0.0.1:8443> kiểm trang và CSP, đăng nhập, phiên, telemetry, kênh WSS và vòng đời lệnh Dừng; xong thì xoá stack cùng volume, kể cả khi có bước trượt. Mỗi bước in một dòng, mã thoát 0 là đạt. Script chỉ dùng thư viện chuẩn của Python và lệnh `docker`, và không chạy khi project `ev-arm` đã có container. Với `--no-build`, script không build mà dựng stack từ hai image `ev-arm-core:sim` và `ev-arm-hmi:sim` đã có trên máy, thiếu image thì báo lỗi chứ không kéo từ registry; job `e2e-sim` của CI chạy cách này sau khi tự build hai image đó với cache của GitHub Actions.
 
 ## Kiểm tra
 
@@ -53,6 +53,7 @@ docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
 - Mỗi lần push vào `main`, `develop` và mỗi PR, CI (`.github/workflows/ci.yaml`) chạy các job:
   - `checks`: commitlint trên từng commit mới, các hook trên toàn bộ file của commit cuối, quét bí mật trên toàn bộ lịch sử, kê giấy phép dependency npm;
   - `python-linux`, cổng chốt: build target dev của image `core` rồi chạy pytest trong đó với `--network none`; có test bị bỏ qua thì job thất bại;
+  - `e2e-sim`, chạy sau `python-linux`: build target runtime của image `core` và image `hmi` với tag `:sim`, rồi chạy `python3 scripts/e2e_sim.py --no-build`; có kiểm trượt thì job thất bại;
   - `ui`: test và bản build của `operator-ui`;
   - `python-licences`: kê giấy phép dependency Python trong `robot-core/uv.lock`, lấy từ metadata trên PyPI của đúng bản đã khoá;
   - `windows`: mức 1 trên Windows (`uv sync`, pytest và mypy của `robot-core`, test của `operator-ui`), chỉ chạy khi khoảng commit đổi mã Python, HMI, file khai báo hay lockfile của pnpm, hoặc chính `ci.yaml`; danh sách đường dẫn nằm ở bước `Detect level 1 changes` của job `checks`;
