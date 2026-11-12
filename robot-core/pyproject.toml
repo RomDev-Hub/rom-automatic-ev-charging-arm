@@ -10,6 +10,8 @@ dependencies = [
   "numpy>=2.5.4",
   # Chỉ khai cho Linux vì PyPI không có wheel Pinocchio cho Windows (ADR 0008).
   "pin>=4.1.0; sys_platform == 'linux'",
+  # Chỉ adapter UR dùng, chạy trên Linux; PyPI không có wheel cho Python 3.14 nên luôn build từ source (ADR 0008).
+  "ur_rtde==1.6.5; sys_platform == 'linux'",
   "uvicorn[standard]>=0.54.0",
 ]
 
@@ -40,6 +42,13 @@ packages = ["src/robot_core"]
 [tool.uv]
 # Phiên bản lấy từ Git, nên mỗi commit hoặc tag mới thì cài lại project để metadata đúng phiên bản.
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+# Ghim gói build của ur_rtde: setup.py của nó còn import distutils, chỉ chạy nhờ bản đi kèm setuptools (ADR 0008).
+# Ràng buộc áp cho mọi gói build từ source, kể cả robot-core, vì hatch-vcs cần setuptools-scm.
+build-constraint-dependencies = [
+  "pybind11==3.1.0",
+  "setuptools==84.2.1",
+  "setuptools-scm==10.3.4",
+]
 
 [tool.ruff]
 extend = "../ruff.toml"
