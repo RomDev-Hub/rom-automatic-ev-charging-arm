@@ -68,6 +68,27 @@ repos:
         language: python
         pass_filenames: false
         always_run: true
+      # ESLint, Prettier và kiểm kiểu của operator-ui, cùng bản với dependency trong pnpm-lock.yaml; cấu hình nằm trong operator-ui/.
+      # Mỗi hook chạy trên cả package, vì luật kiểu của ESLint và tsc cần toàn bộ dự án.
+      - id: eslint-operator-ui
+        name: eslint (operator-ui)
+        entry: pnpm --filter operator-ui run lint
+        language: system
+        files: ^operator-ui/
+        pass_filenames: false
+      - id: prettier-operator-ui
+        name: prettier (operator-ui)
+        entry: pnpm --filter operator-ui run format:check
+        language: system
+        files: ^operator-ui/
+        pass_filenames: false
+      - id: typecheck-operator-ui
+        name: typecheck (operator-ui)
+        entry: pnpm --filter operator-ui run typecheck
+        language: system
+        # Mã của operator-ui import hai file locale của robot-core.
+        files: ^(operator-ui/|robot-core/src/robot_core/locales/)
+        pass_filenames: false
       - id: commitlint
         name: commitlint
         entry: pnpm exec commitlint --edit  # luật nằm trong commitlint.config.mjs
