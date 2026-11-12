@@ -1,7 +1,9 @@
 """End-to-end smoke test of the simulation stack, through the hmi service.
 
 Builds and starts deploy/compose.yaml plus deploy/compose.sim.yaml, waits until core
-and hmi are healthy and creates an admin account with `docker compose run`. Then it
+and hmi are healthy and creates an admin account with `docker compose run`. With
+--no-build it skips the build and starts the images already tagged ev-arm-core:sim and
+ev-arm-hmi:sim, as the CI job does after building them with its own cache. Then it
 checks through https://127.0.0.1:8443, with TLS verification off because Caddy signs
 with its internal CA: the page and its CSP, login, the session, telemetry, one
 telemetry message on the WSS channel, and the Stop lifecycle ending in SAFE_STOP.
@@ -12,6 +14,7 @@ machine, Linux or Windows. Prints one line per check; exits 0 when every check
 passes, 1 otherwise.
 """
 
+import argparse
 import base64
 import hashlib
 import http.client
@@ -26,7 +29,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -216,7 +219,8 @@ class PushChannel:
 class Run:
     """The checks, in order; each returns what it saw, or raises CheckFailed."""
 
-    def __init__(self) -> None:
+    def __init__(self, build: bool) -> None:
+        self.build = build
         self.username = f"e2e-{secrets.token_hex(4)}"
         self.password = secrets.token_urlsafe(18)
         self.cookie = ""
@@ -224,10 +228,13 @@ class Run:
 
     def stack_healthy(self) -> str:
         start = time.monotonic()
+        # Without a build, a missing image is an error rather than a pull from a registry.
+        images = ("--build",) if self.build else ("--no-build", "--pull", "never")
         wait = ("--wait", "--wait-timeout", str(HEALTHY_TIMEOUT_S))
-        compose("up", "--build", "--detach", *wait, progress=True)
+        compose("up", *images, "--detach", *wait, progress=True)
         elapsed_s = time.monotonic() - start
-        return f"core and hmi healthy after {elapsed_s:.0f} s, build included"
+        source = "build included" if self.build else "images built beforehand"
+        return f"core and hmi healthy after {elapsed_s:.0f} s, {source}"
 
     def admin_created(self) -> str:
         # The password goes on stdin, never on the command line.
@@ -315,7 +322,16 @@ def report(status: str, name: str, detail: str) -> None:
     print(f"{status} {name}: {' '.join(detail.split())}", flush=True)
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="start the stack from the images already tagged ev-arm-core:sim and ev-arm-hmi:sim instead of building them",
+    )
+    options = parser.parse_args(argv)
     try:
         existing = compose("ps", "--all", "--quiet").split()
     except (CheckFailed, OSError) as error:
@@ -326,7 +342,7 @@ def main() -> int:
         report("FAIL", "preflight", "project ev-arm has containers; stop it first")
         return 1
 
-    run = Run()
+    run = Run(build=not options.no_build)
     checks = [
         ("stack healthy", run.stack_healthy),
         ("admin account", run.admin_created),
