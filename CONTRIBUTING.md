@@ -23,7 +23,25 @@ Mã chạy và được kiểm ở ba mức. Mỗi người làm tới mức mà
 | 3 | PC Linux hoặc Jetson, làm việc qua SSH | test với tay máy, camera và GPU thật; máy đích cần Docker Engine và NVIDIA Container Toolkit |
 
 - Pinocchio và ur_rtde chỉ khai cho Linux, vì PyPI không có đủ bản cài sẵn cho các nền tảng khác. Trên máy khác, test cần Pinocchio tự bỏ qua; CI chạy trên Linux và coi việc bỏ qua đó là lỗi.
+- Trên Linux, `uv sync` build ur_rtde từ source vì PyPI không có wheel cho Python 3.14, nên máy cần trình biên dịch C/C++, CMake, git, Boost (system, thread, program_options) và mạng ra GitHub; trên Debian và Ubuntu là các gói `g++ cmake git libboost-system-dev libboost-thread-dev libboost-program-options-dev`.
 - Dev container (`.devcontainer/`) là tuỳ chọn, cho ai muốn mở repo trong môi trường Linux.
+
+Ở mức 2, test của robot-core chạy trong target dev của image `core`. Target này dựng trên target chạy thật nên dùng đúng thư viện hệ thống của image đó; test cần Pinocchio chạy, không test nào bị bỏ qua. Lần build đầu biên dịch ur_rtde, mất khoảng 6 phút trên amd64; các lần sau dùng lại cache.
+
+```bash
+docker build -f deploy/docker/core.Dockerfile --target dev -t ev-arm-core:dev .
+docker run --rm --network none ev-arm-core:dev pytest
+```
+
+Stack mô phỏng chạy bằng `deploy/compose.yaml` cộng `deploy/compose.sim.yaml`; thêm `-f deploy/compose.dev.yaml` sau cùng để chạy bằng target dev. Stack dùng volume riêng `ev-arm-sim-*`, không đụng volume của thiết bị. `core` không mở cổng nào ra host, nên gọi API từ một container gắn vào mạng `ev-arm_cell`.
+
+```bash
+docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml up -d --build
+# Tạo tài khoản quản trị; mật khẩu được hỏi trên terminal, hoặc đọc một dòng từ stdin khi chạy với -T.
+docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml run --rm core robot-core admin create <tên>
+# Dừng stack và xoá volume của nó.
+docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
+```
 
 ## Kiểm tra
 
