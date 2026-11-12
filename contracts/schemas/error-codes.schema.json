@@ -25,7 +25,8 @@
     { "$ref": "#/$defs/model" },
     { "$ref": "#/$defs/sim.fault" },
     { "$ref": "#/$defs/cfg" },
-    { "$ref": "#/$defs/ota" }
+    { "$ref": "#/$defs/ota" },
+    { "$ref": "#/$defs/rec" }
   ],
   "$defs": {
     "err": {
@@ -341,6 +342,15 @@
         { "const": "ota.os_too_old", "x-kind": "error", "x-i18n-key": "ota.os_too_old", "x-text": { "vi": "Hệ điều hành cũ hơn phiên bản tối thiểu của bản phát hành", "en": "Operating system older than the release minimum" } },
         { "const": "ota.rolled_back", "x-kind": "error", "x-i18n-key": "ota.rolled_back", "x-text": { "vi": "Kiểm sức khoẻ sau cập nhật không đạt, đã quay lại bản trước", "en": "Post-update health check failed, rolled back" } },
         { "const": "ota.checklist_pending", "x-kind": "warning", "x-i18n-key": "ota.checklist_pending", "x-text": { "vi": "Chờ xác nhận checklist kiểm tra rút gọn sau cập nhật", "en": "Awaiting confirmation of the post-update short checklist" } }
+      ]
+    },
+    "rec": {
+      "title": "Ghi dữ liệu",
+      "description": "Việc ghi bản ghi MCAP dừng vì file không tạo được, không ghi được hay đã đạt giới hạn dung lượng, còn máy vẫn chạy (REQ-REC-010, REQ-REC-011); file nằm trong tham số `path`.",
+      "oneOf": [
+        { "const": "rec.open_failed", "x-kind": "warning", "x-i18n-key": "rec.open_failed", "x-text": { "vi": "Không tạo được file bản ghi, việc ghi bị tắt", "en": "Recording file could not be created, recording is off" } },
+        { "const": "rec.write_failed", "x-kind": "warning", "x-i18n-key": "rec.write_failed", "x-text": { "vi": "Không ghi được file bản ghi, việc ghi đã dừng", "en": "Recording file could not be written, recording stopped" } },
+        { "const": "rec.file_full", "x-kind": "warning", "x-i18n-key": "rec.file_full", "x-text": { "vi": "File bản ghi đạt giới hạn dung lượng, việc ghi đã dừng", "en": "Recording file reached its size limit, recording stopped" } }
       ]
     }
   }
