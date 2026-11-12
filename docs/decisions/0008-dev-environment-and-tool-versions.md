@@ -51,7 +51,7 @@ Phần lớn câu trả lời phụ thuộc vào hai thư viện: [ur_rtde](http
 
 ## Kết quả quyết định
 
-Phương án được chọn: pnpm, cài bằng `npm install -g`; Node do pnpm tải theo `devEngines.runtime`; Python 3.14, riêng phần này còn ở trạng thái đề xuất; uv; ba mức chạy. Mỗi lựa chọn đáp ứng các yếu tố quyết định tốt hơn phương án còn lại của nó (xem mục "Ưu và nhược của từng phương án").
+Phương án được chọn: pnpm, cài bằng `npm install -g`; Node do pnpm tải theo `devEngines.runtime`; Python 3.14; uv; ba mức chạy. Mỗi lựa chọn đáp ứng các yếu tố quyết định tốt hơn phương án còn lại của nó (xem mục "Ưu và nhược của từng phương án").
 
 - JavaScript:
   - Dùng pnpm dòng 12.x, ghim đúng một bản đã phát hành ít nhất 3 ngày trong `devEngines.packageManager` của `package.json`, với `onFail: error` ([pnpm](https://pnpm.io/package_json#devenginespackagemanager)). Dòng 11.28.x là phương án lùi, cùng định dạng lockfile.
@@ -59,9 +59,15 @@ Phương án được chọn: pnpm, cài bằng `npm install -g`; Node do pnpm t
   - `pnpm-workspace.yaml` đặt `minimumReleaseAge: 4320` và `trustPolicy: no-downgrade`, giữ mặc định `strictDepBuilds` và `blockExoticSubdeps`. Dependency cần chạy script build được duyệt bằng `pnpm approve-builds`, kết quả ghi vào `allowBuilds`.
   - CI và Docker cài bằng `pnpm install --frozen-lockfile`. pnpm chỉ chạy trên máy phát triển, trên CI và trong stage build; thiết bị chỉ nhận file tĩnh của HMI.
 - Node: dùng Node 26 LTS, do pnpm tự tải theo `devEngines.runtime` với `onFail: download`; bản chính xác và checksum ghim trong `pnpm-lock.yaml` ([pnpm](https://pnpm.io/package_json#devenginesruntime)). Không dùng trình quản lý phiên bản Node, không có `.nvmrc`.
-- Python: 3.14, lùi về 3.12 nếu ur_rtde 1.6.5 không build được từ source trên Python 3.14. Phiên bản ghim trong `robot-core/.python-version` ([uv](https://docs.astral.sh/uv/concepts/python-versions/#python-version-files)).
-  - Status: proposed.
-  - Phần này đóng khi có kết quả spike build ur_rtde 1.6.5 từ source trên Python 3.14 cho cả amd64 và arm64: build được trên cả hai thì chuyển sang chấp nhận với 3.14, không được thì chuyển sang chấp nhận với 3.12. Kết quả spike ghi vào ADR này. Tại ngày ghi ADR, spike chưa có kết quả.
+- Python: 3.14. Phiên bản ghim trong `robot-core/.python-version` ([uv](https://docs.astral.sh/uv/concepts/python-versions/#python-version-files)).
+  - Status: accepted.
+  - Quy tắc đóng phần này: ur_rtde 1.6.5 build được từ source trên Python 3.14 cho cả amd64 và arm64 thì chấp nhận 3.14, không được thì chấp nhận 3.12. Spike ngày 2026-11-12 build được trên cả hai kiến trúc.
+  - Kết quả spike: ur_rtde 1.6.5 build từ sdist trên CPython 3.14.10 cho `linux/amd64` và `linux/arm64`, trong image nền `python:3.14-slim` (Debian 13 trixie); trên cả hai kiến trúc, `rtde_control`, `rtde_receive`, `rtde_io`, `dashboard_client` và `script_client` import được. Spike không chạy ur_rtde với URSim; phần đó do test integration ở mức 2 kiểm (ADR 0004).
+  - PyPI không có wheel cp313, cp314 hay aarch64 cho ur_rtde 1.6.5, nên mọi image dùng Python 3.14 đều build ur_rtde từ source. Bước build mất khoảng 5 phút trên amd64 và khoảng 56 phút trên arm64 chạy giả lập bằng QEMU (Docker Desktop trên máy x86_64, 6 job song song đặt qua `CMAKE_BUILD_PARALLEL_LEVEL`).
+  - Bản arm64 của image `core` build trên runner arm64 của GitHub (`ubuntu-24.04-arm`), không qua QEMU: giả lập QEMU chậm hơn nhiều so với build trên máy cùng kiến trúc ([Docker](https://docs.docker.com/build/building/multi-platform/)), còn runner arm64 dùng được cho repo private và tính vào phút miễn phí ([GitHub Changelog](https://github.blog/changelog/2026-01-29-arm64-standard-runners-are-now-available-in-private-repositories), [GitHub Docs](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)).
+  - Stage build của image `core` cần mạng và `git`: CMake của ur_rtde kéo pybind11 v2.13.6 từ GitHub bằng `git` lúc build.
+  - Các gói mà ur_rtde cần để build (setuptools, setuptools_scm, pybind11) ghim phiên bản bằng file constraints: `setup.py` của ur_rtde import `distutils.version`, mà từ Python 3.12 `distutils` không còn trong thư viện chuẩn ([PEP 632](https://peps.python.org/pep-0632/)), nên lệnh import này chỉ chạy được nhờ bản `distutils` đi kèm setuptools; không ghim thì mỗi lần build lấy setuptools mới nhất.
+  - Target runtime của image `core` cần thư viện dùng chung Boost.Thread, trên Debian 13 trixie là gói `libboost-thread1.83.0`: mọi module của ur_rtde liên kết tới `libboost_thread.so.1.83.0` và không cần thư viện Boost nào khác.
 - Công cụ Python:
   - [uv](https://docs.astral.sh/uv/) quản lý môi trường; lock bằng `uv.lock`.
   - Build backend hatchling cộng [hatch-vcs](https://github.com/ofek/hatch-vcs), phiên bản lấy từ tag Git. Khi build trong Docker, phiên bản truyền vào qua biến pretend-version của [setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/overrides/).
@@ -88,7 +94,7 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 - Ưu: lỡ gõ `npm install` trong repo thì báo lỗi ngay.
 - Ưu: người chỉ có máy Windows hoặc macOS vẫn làm được unit test, adapter mô phỏng, API, mission và HMI mà không cần Docker.
 - Nhược: trên máy không phải Linux, test cần Pinocchio bị bỏ qua ở mức 1; muốn kiểm đủ thì chạy mức 2 hoặc dựa vào job Linux của CI. Marker `sys_platform == 'linux'` loại cả `pin` trên macOS, dù PyPI có wheel macOS.
-- Nhược: nếu chốt 3.14, mọi máy Linux, kể cả amd64, phải build ur_rtde từ source, vì không có wheel cho Python trên 3.12.
+- Nhược: mọi máy Linux, kể cả amd64, phải build ur_rtde từ source, vì không có wheel cho Python trên 3.12; mỗi lần build cần trình biên dịch C/C++, CMake, `git`, thư viện Boost (system, thread, program_options) và mạng.
 - Nhược: lỗi chỉ xảy ra trên Windows, trong thay đổi không đụng file Python hay HMI, thì CI không bắt được.
 - Nhược: trên Windows, store dùng chung của pnpm chỉ có tác dụng trong cùng một ổ đĩa.
 
@@ -98,7 +104,7 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 - CI cài đúng bản pnpm đọc từ `devEngines.packageManager.version` rồi chạy `pnpm install --frozen-lockfile`; lockfile lệch với `package.json` thì CI dừng.
 - `.pre-commit-config.yaml` khai `minimum_pre_commit_version: "4.7.0"`, nên bản pre-commit cũ hơn báo lỗi thay vì chạy hook; CI chạy hook bằng pre-commit 4.7.0.
 - Khi có mã Python, `.pre-commit-config.yaml` thêm hook ruff và `uv lock --check`; job Linux của CI thất bại nếu có test cần Pinocchio bị bỏ qua; job Windows chạy test mức 1 khi đổi file Python hoặc HMI.
-- Phần phiên bản Python được xác nhận bằng kết quả spike ghi vào ADR này; `robot-core/.python-version` ghi đúng bản đã chốt.
+- Phần phiên bản Python đã được xác nhận bằng spike ghi ở mục Kết quả quyết định; `robot-core/.python-version` ghi đúng bản đã chốt.
 
 ## Ưu và nhược của từng phương án
 
@@ -123,11 +129,11 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 - Trình quản lý phiên bản Node đọc `.nvmrc`, ví dụ fnm:
   - Ưu: dự án khác trên máy vẫn dùng bản Node của chúng.
   - Nhược: mỗi máy phải cài thêm một công cụ; phiên bản Node nằm ở `.nvmrc`, tách khỏi chỗ khai pnpm.
-- Python 3.14 (đề xuất):
+- Python 3.14 (chọn):
   - Ưu: còn nhận bản vá lỗi tới 2027-10.
   - Ưu: `pin` 4.1.0 và onnxruntime 1.31.1 có wheel cho 3.14; numpy 2.5 và scipy 1.18 chỉ cần Python 3.12 trở lên.
   - Trung tính: wheel ur_rtde cho Windows chỉ tới 3.12, nhưng mức 1 không cần ur_rtde: chỉ adapter UR dùng nó, và adapter này chạy ở mức 2–3 trên Linux.
-  - Nhược: ur_rtde 1.6.5 không có wheel cho 3.14, nên trên mọi kiến trúc đều phải build từ source; build được hay không là câu hỏi spike trả lời.
+  - Nhược: ur_rtde 1.6.5 không có wheel cho 3.14, nên trên mọi kiến trúc đều phải build từ source; spike build được trên cả amd64 và arm64.
 - Python 3.12:
   - Ưu: ur_rtde 1.6.5 có wheel cho 3.12 trên Linux x86_64 và Windows.
   - Nhược: chỉ còn nhận bản vá bảo mật, tới 2028-10.
@@ -150,7 +156,6 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 
 - Xét lại công cụ Python nếu người phát triển cần chạy test động học ngay trên Windows mà không qua Docker; khi đó pixi cộng conda-forge là phương án đã biết.
 - Các điểm chưa quyết:
-  - Spike mới có tiêu chí "build được"; chưa nêu có cần import ur_rtde hay chạy thử với URSim hay không.
   - Phiên bản uv chưa được ghim.
   - Test cần ur_rtde bỏ qua thế nào trên máy không cài gói này; quy tắc `pytest.importorskip` ở trên mới áp cho test cần Pinocchio.
   - Có cho macOS cài `pin` hay không, vì marker `sys_platform == 'linux'` hiện loại cả macOS.
