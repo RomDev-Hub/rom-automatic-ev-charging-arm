@@ -3,7 +3,11 @@ name = "robot-core"
 dynamic = ["version"]
 requires-python = ">=3.14"
 license = "AGPL-3.0-or-later"
-dependencies = []
+dependencies = [
+  "numpy>=2.5.4",
+  # Chỉ khai cho Linux vì PyPI không có wheel Pinocchio cho Windows (ADR 0008).
+  "pin>=4.1.0; sys_platform == 'linux'",
+]
 
 [dependency-groups]
 dev = [
@@ -35,6 +39,11 @@ extend = "../ruff.toml"
 [tool.mypy]
 files = ["src"]
 strict = true
+
+[[tool.mypy.overrides]]
+# Pinocchio không kèm stub kiểu, và không được cài trên Windows.
+module = ["pinocchio"]
+ignore_missing_imports = true
 
 [tool.pytest]
 testpaths = ["tests"]

@@ -86,6 +86,7 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 - Dev container (`.devcontainer/`) là tuỳ chọn, dành cho người muốn làm việc trong môi trường Linux.
 - `pin` và `ur_rtde` khai kèm [environment marker](https://packaging.python.org/en/latest/specifications/dependency-specifiers/#environment-markers) `sys_platform == 'linux'`, nên `uv sync` trên Windows và macOS không cài hai gói này.
 - Test cần Pinocchio gọi [`pytest.importorskip`](https://docs.pytest.org/en/stable/how-to/skipping.html), nên tự bỏ qua trên máy thiếu gói; job Linux của CI coi việc bỏ qua đó là lỗi.
+- Wheel của `pin` 4.1.0 cần thư viện `libgomp.so.1` (gói `libgomp1` của Debian), mà image `python:3.14-slim` không có sẵn; thiếu thư viện này thì `import pinocchio` báo `ImportError` (kiểm trên linux/amd64). Target runtime của image `core` và job Linux của CI cài gói này.
 - CI lấy job Linux làm cổng chốt. Job Windows kiểm mức 1 và chỉ chạy khi đổi file Python hoặc HMI.
 - Cấu hình Git: trên Windows, cấp máy chỉ đặt `core.longpaths=true`; các thiết lập `core.autocrlf=false`, `gpg.format=ssh`, `commit.gpgsign=true`, `tag.gpgSign=true`, `user.signingkey` và `gpg.ssh.allowedSignersFile` đặt trong `.git/config` của repo, để không ép ký hay đổi cách xử lý xuống dòng ở repo khác trên cùng máy.
 
