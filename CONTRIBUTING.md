@@ -49,7 +49,15 @@ docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
 
 - Hook do framework pre-commit quản lý, cấu hình ở `.pre-commit-config.yaml`; repo không dùng husky. `pre-commit install` cài hook `pre-commit` và `commit-msg` vào `.git/hooks/`. Thư mục này không nằm trong Git, nên mỗi bản clone phải tự cài.
 - Hook `no-commit-to-branch` chặn commit trên `main` và `develop`; trên GitHub, ruleset của hai nhánh này chặn mọi thay đổi không qua pull request (mục "Nhánh và lịch sử"). CI chạy các hook với `SKIP=no-commit-to-branch`, vì khi CI chạy trên `main` hay `develop` thì checkout đứng ở chính nhánh đó.
-- Hook pre-commit chạy ở mỗi commit; commitlint chạy ở hook commit-msg. Trên mỗi PR và mỗi lần `main` hay `develop` đổi, CI chạy commitlint trên từng commit mới và chạy lại các hook trên toàn bộ file của commit cuối. Kiểm từng commit qua hook thì chạy `git rebase -x` như mục "Nhánh và lịch sử".
+- Hook pre-commit chạy ở mỗi commit; commitlint chạy ở hook commit-msg. Kiểm từng commit qua hook thì chạy `git rebase -x` như mục "Nhánh và lịch sử".
+- Mỗi lần push vào `main`, `develop` và mỗi PR, CI (`.github/workflows/ci.yaml`) chạy các job:
+  - `checks`: commitlint trên từng commit mới, các hook trên toàn bộ file của commit cuối, quét bí mật trên toàn bộ lịch sử, kê giấy phép dependency npm;
+  - `python-linux`, cổng chốt: build target dev của image `core` rồi chạy pytest trong đó với `--network none`; có test bị bỏ qua thì job thất bại;
+  - `ui`: test và bản build của `operator-ui`;
+  - `python-licences`: kê giấy phép dependency Python trong `robot-core/uv.lock`, lấy từ metadata trên PyPI của đúng bản đã khoá;
+  - `windows`: mức 1 trên Windows (`uv sync`, pytest và mypy của `robot-core`, test của `operator-ui`), chỉ chạy khi khoảng commit đổi mã Python, HMI, file khai báo hay lockfile của pnpm, hoặc chính `ci.yaml`; danh sách đường dẫn nằm ở bước `Detect level 1 changes` của job `checks`;
+  - `build-artifacts`, chỉ trên PR từ nhánh `release/X.Y.Z` hay `hotfix/X.Y.Z` và PR đổi Dockerfile, file khai báo hay lockfile mà image dùng (danh sách ở bước `Detect image build changes` của job `checks`): build image `core` (target runtime) và `hmi` cho amd64 và arm64 như workflow phát hành, nhưng không đẩy đi.
+- Hai bước kê giấy phép chỉ cảnh báo, không làm CI đỏ; danh sách giấy phép không bị cảnh báo là biến `ALLOWED_LICENCES` trong `ci.yaml`.
 - Với `operator-ui`, hook chạy ESLint, Prettier, kiểm kiểu và kiểm kiểu sinh từ `contracts/` còn khớp; test chạy bằng `pnpm --filter operator-ui run test`, bản build bằng `pnpm --filter operator-ui run build`. Sau khi đổi `contracts/`, sinh lại kiểu bằng `pnpm --filter operator-ui run contracts`.
 - Không dùng `--no-verify`.
 
@@ -264,7 +272,7 @@ Dòng "This reverts commit" để nguyên như Git sinh ra. Header của commit 
 
 ### Commit của bot
 
-- Prefix do `.github/dependabot.yml` đặt: cập nhật gói npm và hook pre-commit dùng `build(deps)` hoặc `build(deps-dev)`; cập nhật GitHub Actions dùng `ci(deps)`.
+- Prefix do `.github/dependabot.yml` đặt: cập nhật gói npm, gói Python của `robot-core`, image nền trong `deploy/docker/` và hook pre-commit dùng `build(deps)` hoặc `build(deps-dev)`; cập nhật GitHub Actions dùng `ci(deps)`.
 - Commit của bot giữ tiếng Anh.
 - CI không chạy commitlint trên commit do `dependabot[bot]` viết, vì body commit do bot sinh có dòng dài và ghi chú phát hành.
 
@@ -287,11 +295,12 @@ Repo theo mô hình git-flow: `main` chỉ chứa bản đã phát hành, `devel
 ## Phát hành
 
 - Số phiên bản theo SemVer; Mr.Ròm quyết định khi nào phát hành và số phiên bản. Giữa hai bản phát hành, `CHANGELOG.md` chỉ có mục `## [Unreleased]`, và PR thường không đổi số phiên bản. Tag có dạng `vX.Y.Z`; số phiên bản lấy từ tag, không ghi tay vào file khai báo.
-- Chốt bản: nhánh `release/X.Y.Z` tách từ `origin/develop`, có commit `chore(release): phát hành X.Y.Z` chỉ sửa `CHANGELOG.md`: đổi `## [Unreleased]` thành `## [X.Y.Z] - YYYY-MM-DD`, biên tập nội dung mục đó, và mở lại một mục `## [Unreleased]` trống ở trên. Trên nhánh này chỉ sửa lỗi, không thêm tính năng. Mở PR từ nhánh này vào `main`.
-- Merge PR đó vào `main` là phát hành: workflow `.github/workflows/release.yaml` lấy số phiên bản từ tên nhánh, dừng nếu CHANGELOG không có mục `## [X.Y.Z]` hoặc tag `vX.Y.Z` đã có, rồi tạo tag `vX.Y.Z` cùng GitHub Release trên commit merge, với nội dung là mục của bản đó trong CHANGELOG. Luồng thường không tạo tag bằng tay; tag và bản phát hành đã đẩy lên không bao giờ bị xoá, dời hay dùng lại: ruleset chặn xoá và dời tag `v*`, và repo bật release immutability.
+- Chốt bản: nhánh `release/X.Y.Z` tách từ `origin/develop`, có commit `chore(release): phát hành X.Y.Z` chỉ sửa `CHANGELOG.md`: đổi `## [Unreleased]` thành `## [X.Y.Z] - YYYY-MM-DD`, biên tập nội dung mục đó, và mở lại một mục `## [Unreleased]` trống ở trên. Trên nhánh này chỉ sửa lỗi, không thêm tính năng. Mở PR từ nhánh này vào `main`; trên PR này, job `build-artifacts` của CI build đủ image `core` và `hmi` cho amd64 và arm64 nhưng không đẩy đi, nên biết chắc build được trước khi merge.
+- Merge PR đó vào `main` là phát hành: workflow `.github/workflows/release.yaml` lấy số phiên bản từ tên nhánh, dừng nếu CHANGELOG không có mục `## [X.Y.Z]` hoặc tag `vX.Y.Z` đã có, build image `core` (target runtime) và `hmi` cho amd64 và arm64, mỗi kiến trúc trên runner cùng kiến trúc, gắn SBOM, provenance và annotation OCI, đẩy lên GHCR theo digest rồi gộp thành image index có tag `X.Y.Z`; image xong mới tạo tag `vX.Y.Z` cùng GitHub Release trên commit merge, với nội dung là mục của bản đó trong CHANGELOG. Bước cuối của job `merge` in digest của từng image index. Mọi bước nằm trong một workflow vì tag do `GITHUB_TOKEN` tạo không kích hoạt workflow khác; tag và GitHub Release tạo sau cùng để build hỏng không để lại bản phát hành dở.
+- Luồng thường không tạo tag bằng tay; tag và bản phát hành đã đẩy lên không bao giờ bị xoá, dời hay dùng lại: ruleset chặn xoá và dời tag `v*`, và repo bật release immutability.
 - Sau khi phát hành, mở PR từ `main` vào `develop` và merge, để `develop` có mục CHANGELOG của bản vừa phát hành.
 - Vá gấp bản đã phát hành: nhánh `hotfix/X.Y.Z` tách từ `origin/main`, với X.Y.Z là bản PATCH kế tiếp, có commit sửa lỗi và commit `chore(release): phát hành X.Y.Z` thêm mục `## [X.Y.Z] - YYYY-MM-DD` vào CHANGELOG; mở PR vào `main`, merge là phát hành bản PATCH, rồi đưa `main` về `develop` như trên.
-- Workflow phát hành hỏng vì hạ tầng (runner, mạng, quyền, quota) thì sửa cài đặt rồi chạy lại các job hỏng của đúng lần chạy đó (`gh run rerun <id> --failed`).
+- Workflow phát hành hỏng vì hạ tầng (runner, mạng, quyền registry, quota) thì sửa cài đặt rồi chạy lại các job hỏng của đúng lần chạy đó (`gh run rerun <id> --failed`). Hỏng vì code hay cấu hình build trước khi có tag thì sửa qua nhánh `hotfix/X.Y.Z` cùng số phiên bản, vì bản đó chưa được phát hành.
 - `CHANGELOG.md`:
   - tiêu đề mỗi bản dạng `## [X.Y.Z] - YYYY-MM-DD`;
   - tên mục giữ tiếng Anh (Added, Changed, Deprecated, Removed, Fixed, Security), nội dung viết tiếng Việt.

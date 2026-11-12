@@ -70,7 +70,8 @@ An toàn, bảo mật, CI, test, phiên bản, changelog và SBOM vẫn giữ.
 ### Xác nhận
 
 - [LICENSE](../../LICENSE) chứa toàn văn AGPL-3.0; `README.md` ghi giấy phép `AGPL-3.0-or-later` và dẫn tới `LICENSE`; `package.json` ở gốc repo khai `"license": "AGPL-3.0-or-later"`. Người duyệt kiểm mỗi `package.json` hay `pyproject.toml` thêm sau cũng khai như vậy.
-- Bước `Dependency licences (warning only)` trong `.github/workflows/ci.yaml` chạy `pnpm licenses list --json` và in một cảnh báo cho mỗi giấy phép không có trong danh sách cho phép ghi ngay trong bước đó. Bước có `continue-on-error: true`, nên không làm CI đỏ. Bước này chỉ kê dependency do pnpm quản lý; dependency Python chưa được kê.
+- Trong `.github/workflows/ci.yaml`, bước `Dependency licences (warning only)` kê dependency do pnpm quản lý bằng `pnpm licenses list --json`; job `python-licences` chạy `scripts/list_python_licences.py`, kê từng gói trong `robot-core/uv.lock` với giấy phép lấy từ metadata trên PyPI của đúng bản đã khoá. Cả hai in một cảnh báo cho mỗi giấy phép không có trong danh sách cho phép (biến `ALLOWED_LICENCES` của workflow) và có `continue-on-error: true`, nên không làm CI đỏ.
+- `pin` và `libpinocchio` 4.1.0 được kê là BSD-2-Clause theo file `LICENSE` mà hai gói này mang, chính là file của Pinocchio ở tag v4.1.0, thay cho BSD-3-Clause trong metadata trên PyPI (ADR 0012). Khi bản đã khoá của hai gói đổi, script cảnh báo để người duyệt đọc lại file `LICENSE` của bản mới.
 - Chưa có kiểm tra tự động cho các điểm sau, nên chúng được kiểm khi review: thoả thuận đã ký trước khi nhận đóng góp; Ultralytics chỉ nằm trong `training/`; không có code chép từ dự án AGPL hay GPL; mỗi tài sản mới có mục trong `third_party/assets.yaml`.
 - Trước khi giao thiết bị: bản đang chạy có trang "Giới thiệu" và chế độ developer; hướng dẫn sử dụng đã có và ghi cách dùng chế độ developer; hồ sơ an toàn và nghiệm thu tại chỗ đã xong; cách đọc "User Product" đã được kiểm pháp lý.
 
@@ -112,7 +113,7 @@ An toàn, bảo mật, CI, test, phiên bản, changelog và SBOM vẫn giữ.
   - mẫu thoả thuận đóng góp (chuyển quyền tác giả hay cấp quyền, cách ký) và nơi giữ bản đã ký: người có chuyên môn pháp lý xem mẫu trước khi có người đóng góp đầu tiên;
   - hai cách đọc giấy phép ở mục Hệ quả (weights dẫn xuất từ Ultralytics, "User Product") chưa được kiểm pháp lý, trong đó cách đọc "User Product" phải kiểm xong trước khi giao thiết bị;
   - người nhận được truy cập repo ở đúng tag bằng cách nào, và trang "Giới thiệu" ghi địa chỉ nào: cần có trước khi giao thiết bị hoặc bản cài đầu tiên;
-  - công cụ kê giấy phép dependency Python của `robot-core/` và `training/`, vì CI hiện chỉ kê dependency của pnpm: chốt khi thêm dependency Python đầu tiên;
+  - kê giấy phép dependency Python của `training/`: job `python-licences` hiện chỉ đọc `robot-core/uv.lock`, thêm `training/uv.lock` khi component này có lockfile;
   - schema của `third_party/assets.yaml` ngoài nguồn, giấy phép và `nc` (ADR 0010);
   - giấy phép mesh của UR cho twin 3D (chưa kiểm) và model làm mờ mặt người, biển số (chưa chọn);
   - lý do chọn AGPL-3.0-or-later thay vì GPL-3.0 hay một giấy phép cho phép, và chọn "or-later" thay vì "only", chưa được ghi, ngoài điểm về weights dẫn xuất từ Ultralytics.
