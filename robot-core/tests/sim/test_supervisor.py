@@ -53,6 +53,56 @@ def arm_data_hold(cause: str) -> Transition:
     )
 
 
+def test_boot_reaches_idle_through_safe_hold_and_runs_one_segment(clock) -> None:
+    """BOOT, SAFE_HOLD until the evidence is complete, S0_IDLE, then one segment.
+
+    REQ-MIS-005, REQ-MIS-013, REQ-MIS-017, REQ-SIM-001, REQ-SIM-031.
+    """
+    station = Station(clock)
+    assert station.machine.phase is Phase.BOOT
+    assert station.machine.expected_next is Phase.SAFE_HOLD
+
+    transitions = [station.machine.complete_boot()]
+    without_calib = {item: True for item in EVIDENCE if item is not ChecklistItem.CALIB}
+    for _ in range(320):  # 10 s while one check has no data
+        assert station.tick(without_calib) is None
+    assert station.machine.failing_checks == ("chk.calib",)
+
+    transitions.append(station.tick())
+
+    assert transitions == [
+        Transition(
+            previous=Phase.BOOT,
+            phase=Phase.SAFE_HOLD,
+            code="fsm.boot.ready",
+            params={},
+            expected_next=Phase.S0_IDLE,
+        ),
+        Transition(
+            previous=Phase.SAFE_HOLD,
+            phase=Phase.S0_IDLE,
+            code="fsm.idle.after_safe_hold",
+            params={},
+            expected_next=None,
+        ),
+    ]
+
+    assert station.arm.execute(SEGMENT) is None
+    progress = []
+    for _ in range(80):  # 2.5 s, the segment's duration
+        assert station.tick() is None
+        progress.append(station.arm.read_state().progress)
+
+    assert progress[15].fraction == 0.125  # 0.5 s: end of the acceleration ramp
+    assert progress[39].fraction == 0.5  # 1.25 s: half way
+    assert progress[78].status is SegmentStatus.RUNNING
+    assert progress[79] == SegmentProgress(
+        segment=SEGMENT, status=SegmentStatus.COMPLETED, fraction=1.0
+    )
+    assert station.arm.read_state().joint_position_rad == SEGMENT.target_rad
+    assert station.machine.phase is Phase.S0_IDLE
+
+
 def test_stale_arm_data_stops_the_segment_and_forces_safe_hold(clock) -> None:
     """REQ-MOT-024: data older than 0.15 s stops the arm and forces SAFE_HOLD."""
     station = idle_with_segment_half_done(clock)
