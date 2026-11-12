@@ -3,6 +3,8 @@ name = "robot-core"
 dynamic = ["version"]
 requires-python = ">=3.14"
 license = "AGPL-3.0-or-later"
+# Bản chép đúng từng byte của LICENSE ở gốc repo: PEP 639 không cho license-files trỏ ra ngoài thư mục chứa pyproject.toml.
+license-files = ["LICENSE"]
 dependencies = [
   "argon2-cffi>=25.1.0",
   "fastapi>=0.162.5",
