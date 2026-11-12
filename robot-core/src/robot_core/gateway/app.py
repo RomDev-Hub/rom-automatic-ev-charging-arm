@@ -12,6 +12,7 @@ from robot_core.gateway.problems import install_problem_handlers, problem_schema
 from robot_core.gateway.runtime import CoreRuntime
 from robot_core.gateway.sessions import SessionStore, session_routes
 from robot_core.gateway.settings import Settings
+from robot_core.gateway.stream import push_routes
 
 API_TITLE = "robot-core REST API"
 # Version of the REST contract, not of the software; a draft until it is agreed.
@@ -62,4 +63,5 @@ def create_app(
     app.include_router(health_routes(core))
     accounts = AccountStore.in_config_dir(settings.config_dir)
     app.include_router(session_routes(accounts, sessions))
+    app.include_router(push_routes(core.events, sessions))
     return app

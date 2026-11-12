@@ -348,6 +348,11 @@ components:
         - CALIBRATION_BLOCKED
         - MAINTENANCE
         - SESSION_FAILED
+    ExpectedNext:
+      description: Trạng thái kỳ vọng kế tiếp (REQ-MIS-005); `null` khi danh mục trạng thái của bản đang chạy chưa có trạng thái kế cho trạng thái hiện tại.
+      oneOf:
+        - $ref: '#/components/schemas/Phase'
+        - type: 'null'
     SupervisionLevel:
       type: string
       description: Mức giám sát (REQ-MIS-073).
@@ -395,7 +400,7 @@ components:
         params:
           $ref: '#/components/schemas/Params'
         expected_next:
-          $ref: '#/components/schemas/Phase'
+          $ref: '#/components/schemas/ExpectedNext'
     MotionBlockedData:
       type: object
       required:
@@ -580,7 +585,7 @@ components:
         previous:
           $ref: '#/components/schemas/Phase'
         expected_next:
-          $ref: '#/components/schemas/Phase'
+          $ref: '#/components/schemas/ExpectedNext'
         since_s:
           type: number
           minimum: 0

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from types import MappingProxyType
@@ -10,7 +11,8 @@ from types import MappingProxyType
 from robot_core.adapters.sim.arm import SimArm
 from robot_core.arm.kinematics import Kinematics, KinematicsUnavailableError
 from robot_core.arm.model import load_preset
-from robot_core.mission.machine import ChecklistItem, MissionMachine
+from robot_core.gateway.events import EventHub
+from robot_core.mission.machine import ChecklistItem, MissionMachine, Transition
 from robot_core.mission.supervisor import Supervisor
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,10 @@ class CoreRuntime:
     """Mission machine and simulated arm, ticked by the supervision loop.
 
     Building a runtime touches no device and starts no task; everything runs from
-    `start` to `stop` (REQ-GW-020).
+    `start` to `stop` (REQ-GW-020). Each phase change goes out on `events`.
+
+    Attributes:
+        run_id: Identifier of this run of robot-core (REQ-REC-013).
 
     Args:
         checklist_evidence: Checks whose sources the supervisor does not read, read
@@ -59,6 +64,8 @@ class CoreRuntime:
     ) -> None:
         self._checklist_evidence = checklist_evidence
         self._kinematics_probe = kinematics_probe
+        self.run_id = str(uuid.uuid7())
+        self.events = EventHub(self.run_id)
         self.arm = SimArm(time.monotonic, STOW_POSITION_RAD)
         self.machine = MissionMachine()
         self.supervisor = Supervisor(
@@ -75,7 +82,7 @@ class CoreRuntime:
             self._kinematics_loaded = True
         except KinematicsUnavailableError as error:
             logger.warning("%s", error)
-        self.machine.complete_boot()
+        self._announce(self.machine.complete_boot())
         self._tick()
         self._loop = asyncio.create_task(
             self._supervise(time.monotonic()), name="supervision-loop"
@@ -114,8 +121,12 @@ class CoreRuntime:
             self._tick()
 
     def _tick(self) -> None:
-        self.supervisor.tick(self._checklist_evidence)
+        self._announce(self.supervisor.tick(self._checklist_evidence))
         self._last_tick_s = time.monotonic()
+
+    def _announce(self, transition: Transition | None) -> None:
+        if transition is not None:
+            self.events.publish_phase(transition)
 
 
 def _report_loop_end(loop: asyncio.Task[None]) -> None:
