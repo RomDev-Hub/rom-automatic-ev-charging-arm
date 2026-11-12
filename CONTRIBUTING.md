@@ -33,7 +33,7 @@ docker build -f deploy/docker/core.Dockerfile --target dev -t ev-arm-core:dev .
 docker run --rm --network none ev-arm-core:dev pytest
 ```
 
-Stack mô phỏng chạy bằng `deploy/compose.yaml` cộng `deploy/compose.sim.yaml`; thêm `-f deploy/compose.dev.yaml` sau cùng để chạy bằng target dev. Stack dùng volume riêng `ev-arm-sim-*`, không đụng volume của thiết bị. `core` không mở cổng nào ra host, nên gọi API từ một container gắn vào mạng `ev-arm_cell`.
+Stack mô phỏng chạy bằng `deploy/compose.yaml` cộng `deploy/compose.sim.yaml`; thêm `-f deploy/compose.dev.yaml` sau cùng để chạy bằng target dev. Stack dùng volume riêng `ev-arm-sim-*`, không đụng volume của thiết bị. HMI mở ở <https://127.0.0.1:8443>, chỉ trên loopback; REST và WSS tới `core` cũng đi qua địa chỉ này, vì `core` không mở cổng nào. Chứng chỉ do CA nội bộ của Caddy cấp và được tạo lại mỗi lần container `hmi` khởi động, nên trình duyệt báo chứng chỉ không tin cậy; chấp nhận cảnh báo cho riêng địa chỉ này.
 
 ```bash
 docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml up -d --build
@@ -42,6 +42,8 @@ docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml run --rm core r
 # Dừng stack và xoá volume của nó.
 docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
 ```
+
+`python scripts/e2e_sim.py` kiểm cả stack mô phỏng từ đầu tới cuối: dựng stack, tạo tài khoản quản trị, rồi qua <https://127.0.0.1:8443> kiểm trang và CSP, đăng nhập, phiên, telemetry, kênh WSS và vòng đời lệnh Dừng; xong thì xoá stack cùng volume, kể cả khi có bước trượt. Mỗi bước in một dòng, mã thoát 0 là đạt. Script chỉ dùng thư viện chuẩn của Python và lệnh `docker`, và không chạy khi project `ev-arm` đã có container.
 
 ## Kiểm tra
 

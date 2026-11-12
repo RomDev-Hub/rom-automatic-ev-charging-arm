@@ -117,7 +117,7 @@ Danh sách thư mục cho phép, đúng như `scripts/check_layout.py` kiểm:
 | `docs/architecture` | mở | tài liệu kiến trúc |
 | `docs/verification` | mở | tài liệu kiểm chứng |
 | `docs/manual` | mở | hướng dẫn sử dụng |
-| `scripts` | cố định | `bootstrap`, `check_layout.py`, `volume-backup.sh`, `volume-restore.sh` |
+| `scripts` | cố định | `bootstrap`, `check_layout.py`, `e2e_sim.py`, `volume-backup.sh`, `volume-restore.sh` |
 
 File ở gốc repo: `README.md`, `LICENSE`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.dockerignore`, `.pre-commit-config.yaml`, `commitlint.config.mjs`, `.markdownlint.yaml`, `cliff.toml`, cùng `package.json`, `pnpm-workspace.yaml` và `pnpm-lock.yaml` của workspace pnpm. Script không kiểm danh sách này.
 
