@@ -66,10 +66,11 @@ Phương án được chọn: pnpm, cài bằng `npm install -g`; Node do pnpm t
   - PyPI không có wheel cp313, cp314 hay aarch64 cho ur_rtde 1.6.5, nên mọi image dùng Python 3.14 đều build ur_rtde từ source. Bước build mất khoảng 5 phút trên amd64 và khoảng 56 phút trên arm64 chạy giả lập bằng QEMU (Docker Desktop trên máy x86_64, 6 job song song đặt qua `CMAKE_BUILD_PARALLEL_LEVEL`).
   - Bản arm64 của image `core` build trên runner arm64 của GitHub (`ubuntu-24.04-arm`), không qua QEMU: giả lập QEMU chậm hơn nhiều so với build trên máy cùng kiến trúc ([Docker](https://docs.docker.com/build/building/multi-platform/)), còn runner arm64 dùng được cho repo private và tính vào phút miễn phí ([GitHub Changelog](https://github.blog/changelog/2026-01-29-arm64-standard-runners-are-now-available-in-private-repositories), [GitHub Docs](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)).
   - Stage build của image `core` cần mạng và `git`: CMake của ur_rtde kéo pybind11 v2.13.6 từ GitHub bằng `git` lúc build.
-  - Các gói mà ur_rtde cần để build (setuptools, setuptools_scm, pybind11) ghim phiên bản bằng file constraints: `setup.py` của ur_rtde import `distutils.version`, mà từ Python 3.12 `distutils` không còn trong thư viện chuẩn ([PEP 632](https://peps.python.org/pep-0632/)), nên lệnh import này chỉ chạy được nhờ bản `distutils` đi kèm setuptools; không ghim thì mỗi lần build lấy setuptools mới nhất.
+  - Các gói mà ur_rtde cần để build ghim đúng các bản đã build được ur_rtde trên Python 3.14 (setuptools 84.2.1, setuptools-scm 10.3.4, pybind11 3.1.0) bằng build constraints của uv: khoá `build-constraint-dependencies` trong bảng `[tool.uv]` của `robot-core/pyproject.toml`, được ghi lại trong `uv.lock`. Lý do: `setup.py` của ur_rtde import `distutils.version`, mà từ Python 3.12 `distutils` không còn trong thư viện chuẩn ([PEP 632](https://peps.python.org/pep-0632/)), nên lệnh import này chỉ chạy được nhờ bản `distutils` đi kèm setuptools; không ghim thì mỗi lần build lấy setuptools mới nhất. Ràng buộc áp cho mọi gói build từ source, kể cả robot-core, vì hatch-vcs cần setuptools-scm.
   - Target runtime của image `core` cần thư viện dùng chung Boost.Thread, trên Debian 13 trixie là gói `libboost-thread1.83.0`: mọi module của ur_rtde liên kết tới `libboost_thread.so.1.83.0` và không cần thư viện Boost nào khác.
 - Công cụ Python:
   - [uv](https://docs.astral.sh/uv/) quản lý môi trường; lock bằng `uv.lock`.
+  - uv 0.13.7, ghim ở hai chỗ phải nâng cùng nhau: image `ghcr.io/astral-sh/uv` theo digest trong `deploy/docker/core.Dockerfile`, và `rev` của hook uv-pre-commit trong `.pre-commit-config.yaml`.
   - Build backend hatchling cộng [hatch-vcs](https://github.com/ofek/hatch-vcs), phiên bản lấy từ tag Git. Khi build trong Docker, phiên bản truyền vào qua biến pretend-version của [setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/overrides/).
   - Lint bằng ruff, kiểm kiểu bằng mypy, độ dài dòng 88 ([mặc định của ruff](https://docs.astral.sh/ruff/settings/#line-length)).
   - [pre-commit](https://pre-commit.com/) 4.7 trở lên, cài bằng `uv tool install pre-commit`.
@@ -86,7 +87,7 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 - Dev container (`.devcontainer/`) là tuỳ chọn, dành cho người muốn làm việc trong môi trường Linux.
 - `pin` và `ur_rtde` khai kèm [environment marker](https://packaging.python.org/en/latest/specifications/dependency-specifiers/#environment-markers) `sys_platform == 'linux'`, nên `uv sync` trên Windows và macOS không cài hai gói này.
 - Test cần Pinocchio gọi [`pytest.importorskip`](https://docs.pytest.org/en/stable/how-to/skipping.html), nên tự bỏ qua trên máy thiếu gói; job Linux của CI coi việc bỏ qua đó là lỗi.
-- Wheel của `pin` 4.1.0 cần thư viện `libgomp.so.1` (gói `libgomp1` của Debian), mà image `python:3.14-slim` không có sẵn; thiếu thư viện này thì `import pinocchio` báo `ImportError` (kiểm trên linux/amd64). Target runtime của image `core` và job Linux của CI cài gói này.
+- Wheel của `pin` 4.1.0 cần thư viện `libgomp.so.1` (gói `libgomp1` của Debian), mà image `python:3.14-slim` không có sẵn; thiếu thư viện này thì `import pinocchio` báo `ImportError` (kiểm trên linux/amd64). Target runtime của `deploy/docker/core.Dockerfile` cài gói này, target dev dựng trên target runtime nên cũng có; job Linux của CI cũng cài gói này.
 - CI lấy job Linux làm cổng chốt. Job Windows kiểm mức 1 và chỉ chạy khi đổi file Python hoặc HMI.
 - Cấu hình Git: trên Windows, cấp máy chỉ đặt `core.longpaths=true`; các thiết lập `core.autocrlf=false`, `gpg.format=ssh`, `commit.gpgsign=true`, `tag.gpgSign=true`, `user.signingkey` và `gpg.ssh.allowedSignersFile` đặt trong `.git/config` của repo, để không ép ký hay đổi cách xử lý xuống dòng ở repo khác trên cùng máy.
 
@@ -157,7 +158,6 @@ Mã chạy và được kiểm ở ba mức; mỗi người làm tới mức má
 
 - Xét lại công cụ Python nếu người phát triển cần chạy test động học ngay trên Windows mà không qua Docker; khi đó pixi cộng conda-forge là phương án đã biết.
 - Các điểm chưa quyết:
-  - Phiên bản uv chưa được ghim.
   - Test cần ur_rtde bỏ qua thế nào trên máy không cài gói này; quy tắc `pytest.importorskip` ở trên mới áp cho test cần Pinocchio.
   - Có cho macOS cài `pin` hay không, vì marker `sys_platform == 'linux'` hiện loại cả macOS.
   - `training/` dùng chung phiên bản Python với `robot-core` hay ghim riêng.
