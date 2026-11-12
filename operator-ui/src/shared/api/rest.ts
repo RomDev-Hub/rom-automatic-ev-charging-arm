@@ -5,6 +5,7 @@ import { isRecord } from "../isRecord";
 type Schemas = components["schemas"];
 export type Credentials = Schemas["Credentials"];
 export type SessionInfo = Schemas["SessionInfo"];
+export type TelemetryData = Schemas["TelemetryData"];
 
 /** A message for the operator: a stable code and its parameters, put into words through the locale (REQ-I18N-004). */
 export interface Notice {
@@ -32,6 +33,10 @@ export function readSession(): Promise<Result<SessionInfo>> {
 
 export function closeSession(): Promise<Result<unknown>> {
   return settle(() => api().DELETE("/api/session"));
+}
+
+export function readTelemetry(): Promise<Result<TelemetryData>> {
+  return settle(() => api().GET("/api/telemetry"));
 }
 
 async function settle<T>(

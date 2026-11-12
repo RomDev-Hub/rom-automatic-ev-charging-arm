@@ -8,7 +8,8 @@ import { OperatorShell } from "./OperatorShell";
 /** Nothing but the login form shows, and nothing is sent, before sign-in (REQ-HMI-002). */
 export function App({ store }: { store: OperatorStore }) {
   const { t } = useI18n();
-  const { session } = useSyncExternalStore(store.subscribe, store.getState);
+  const state = useSyncExternalStore(store.subscribe, store.getState);
+  const { session } = state;
 
   switch (session.status) {
     case "checking":
@@ -22,7 +23,11 @@ export function App({ store }: { store: OperatorStore }) {
       return <LoginForm notice={session.notice} onSubmit={store.signIn} />;
     case "signed-in":
       return (
-        <OperatorShell username={session.username} onSignOut={store.signOut} />
+        <OperatorShell
+          state={state}
+          username={session.username}
+          onSignOut={store.signOut}
+        />
       );
   }
 }

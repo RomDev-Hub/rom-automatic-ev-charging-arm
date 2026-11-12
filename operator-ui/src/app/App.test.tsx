@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   installFakeWebSocket,
@@ -9,8 +15,33 @@ import { App } from "./App";
 import { createOperatorStore } from "./operatorStore";
 
 const ADMIN = { username: "admin", roles: ["admin"] };
+const SAFE_HOLD_BLOCK = {
+  phase: "SAFE_HOLD",
+  previous: "BOOT",
+  expected_next: "S0_IDLE",
+  since_s: 3.5,
+  note: { code: "fsm.boot.ready", params: {} },
+};
 
 let sockets: FakeWebSocket[];
+
+/** A message of the push channel, with the envelope of contracts/asyncapi.yaml. */
+function pushed(type: string, data: object) {
+  return {
+    specversion: "1.0",
+    id: "0193a1f2-6c1e-7b3a-9f2d-4c8e1a2b3c4d",
+    source: "/core/test",
+    type: `io.github.romdev-hub.ev-arm.${type}`,
+    time: "2026-11-12T08:40:00.125Z",
+    sequence: "00000000000000000001",
+    data,
+  };
+}
+
+/** The value shown under a label of the phase header. */
+function valueOf(label: string): string | null | undefined {
+  return screen.getByText(label).nextElementSibling?.textContent;
+}
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -137,6 +168,7 @@ describe("session", () => {
   it("signs out through the session route and closes the push connection", async () => {
     const requests = serve({
       "GET /api/session": () => json(200, ADMIN),
+      "GET /api/telemetry": () => json(200, { phase: SAFE_HOLD_BLOCK }),
       "DELETE /api/session": () => new Response(null, { status: 204 }),
     });
     await renderApp();
@@ -149,6 +181,7 @@ describe("session", () => {
     ).toBeInstanceOf(HTMLButtonElement);
     expect(requests.map(route)).toEqual([
       "GET /api/session",
+      "GET /api/telemetry",
       "DELETE /api/session",
     ]);
     expect(sockets.map((socket) => socket.readyState)).toEqual([3]);
@@ -166,5 +199,49 @@ describe("session", () => {
       "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn",
     );
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe("phase header", () => {
+  it("follows the telemetry snapshots and phase changes, then shows the lost connection", async () => {
+    serve({
+      "GET /api/session": () => json(200, ADMIN),
+      "GET /api/telemetry": () =>
+        json(200, { data_origin: "simulated", phase: SAFE_HOLD_BLOCK }),
+    });
+    await renderApp();
+
+    act(() => sockets[0]?.open());
+    await waitFor(() => {
+      expect(valueOf("Pha hiện tại")).toBe("Chờ an toàn SAFE_HOLD");
+    });
+    act(() =>
+      sockets[0]?.receive(
+        pushed("telemetry.snapshot", {
+          data_origin: "simulated",
+          phase: { ...SAFE_HOLD_BLOCK, since_s: 7.2 },
+        }),
+      ),
+    );
+    expect(valueOf("Thời gian ở pha")).toBe("7,2 s");
+    expect(screen.queryByText("Telemetry 1 Hz")).not.toBeNull();
+    act(() =>
+      sockets[0]?.receive(
+        pushed("phase.changed", {
+          previous: "SAFE_HOLD",
+          phase: "SAFE_STOP",
+          code: "fsm.safe_stop.stop_command",
+          params: {},
+          expected_next: "SAFE_HOLD",
+        }),
+      ),
+    );
+
+    expect(valueOf("Pha trước")).toBe("Chờ an toàn SAFE_HOLD");
+    expect(valueOf("Pha hiện tại")).toBe("Đã dừng SAFE_STOP");
+    expect(valueOf("Pha kế tiếp dự kiến")).toBe("Chờ an toàn SAFE_HOLD");
+    expect(valueOf("Thời gian ở pha")).toBe("0,0 s");
+    act(() => sockets[0]?.drop());
+    expect(screen.queryByText("Mất kết nối")).not.toBeNull();
   });
 });

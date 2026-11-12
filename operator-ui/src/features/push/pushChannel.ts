@@ -1,15 +1,24 @@
-import type { channels } from "../../shared/contracts/asyncapi";
+import type { channels, components } from "../../shared/contracts/asyncapi";
 import { isRecord } from "../../shared/isRecord";
 
+type Schemas = components["schemas"];
 type PushMessage = channels["push"]["message"];
 export type PushType = PushMessage["type"];
 export type ChannelStatus = "connecting" | "open" | "closed";
+
+/** A payload not yet checked: the field names of contract type `T`, each value still to be validated. */
+export type Unchecked<T> = { readonly [K in keyof T]?: unknown };
 
 /** A message of the push channel whose envelope matches the contract; consumers check the `data` they read. */
 export interface PushEnvelope {
   type: PushType;
   data: Readonly<Record<string, unknown>>;
 }
+
+export const TELEMETRY_SNAPSHOT =
+  "io.github.romdev-hub.ev-arm.telemetry.snapshot" satisfies Schemas["TelemetrySnapshot"]["type"];
+export const PHASE_CHANGED =
+  "io.github.romdev-hub.ev-arm.phase.changed" satisfies Schemas["PhaseChanged"]["type"];
 
 export interface PushHandlers {
   onStatus: (status: ChannelStatus) => void;
@@ -22,13 +31,13 @@ export interface PushChannel {
 
 const ADDRESS: channels["push"]["address"] = "/api/ws";
 // REQ-HMI-004: a handshake is cancelled after 5 s; retries wait 1 s, doubling up to 15 s.
-export const HANDSHAKE_TIMEOUT_MS = 5_000;
+const HANDSHAKE_TIMEOUT_MS = 5_000;
 const FIRST_RETRY_MS = 1_000;
 const LAST_RETRY_MS = 15_000;
 
 const PUSH_TYPES = {
-  "io.github.romdev-hub.ev-arm.telemetry.snapshot": true,
-  "io.github.romdev-hub.ev-arm.phase.changed": true,
+  [TELEMETRY_SNAPSHOT]: true,
+  [PHASE_CHANGED]: true,
   "io.github.romdev-hub.ev-arm.motion.blocked": true,
   "io.github.romdev-hub.ev-arm.fault.raised": true,
   "io.github.romdev-hub.ev-arm.supervision.changed": true,

@@ -113,3 +113,42 @@ button:enabled {
   flex: 1;
   padding: var(--space-4);
 }
+
+.phase-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.phase-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.phase-item dt {
+  color: var(--color-text-muted);
+}
+
+.phase-item dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.phase-id {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.telemetry-status {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.telemetry-status--connecting,
+.telemetry-status--closed {
+  color: var(--color-warning);
+}
