@@ -1,10 +1,16 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  installFakeWebSocket,
+  type FakeWebSocket,
+} from "../features/push/fakeWebSocket";
 import { I18nProvider } from "../shared/i18n/I18nProvider";
 import { App } from "./App";
 import { createOperatorStore } from "./operatorStore";
 
 const ADMIN = { username: "admin", roles: ["admin"] };
+
+let sockets: FakeWebSocket[];
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -65,6 +71,10 @@ function signIn(username: string, password: string) {
   fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
 }
 
+beforeEach(() => {
+  sockets = installFakeWebSocket();
+});
+
 afterEach(() => {
   localStorage.clear();
 });
@@ -82,6 +92,7 @@ describe("session", () => {
     );
     expect(screen.queryByRole("button", { name: "Đăng xuất" })).toBeNull();
     expect(requests.map(route)).toEqual(["GET /api/session"]);
+    expect(sockets).toHaveLength(0);
   });
 
   it("signs in with the credentials in the request body only", async () => {
@@ -104,6 +115,9 @@ describe("session", () => {
       password: "correct horse",
     });
     expect([localStorage.length, sessionStorage.length]).toEqual([0, 0]);
+    expect(sockets.map((socket) => socket.url)).toEqual([
+      "ws://localhost:3000/api/ws",
+    ]);
   });
 
   it("tells why sign-in was refused, from the problem code", async () => {
@@ -120,12 +134,13 @@ describe("session", () => {
     );
   });
 
-  it("signs out through the session route", async () => {
+  it("signs out through the session route and closes the push connection", async () => {
     const requests = serve({
       "GET /api/session": () => json(200, ADMIN),
       "DELETE /api/session": () => new Response(null, { status: 204 }),
     });
     await renderApp();
+    act(() => sockets[0]?.open());
 
     fireEvent.click(screen.getByRole("button", { name: "Đăng xuất" }));
 
@@ -136,5 +151,20 @@ describe("session", () => {
       "GET /api/session",
       "DELETE /api/session",
     ]);
+    expect(sockets.map((socket) => socket.readyState)).toEqual([3]);
+  });
+
+  it("returns to the login form when a dropped connection finds the session refused", async () => {
+    const routes = { "GET /api/session": () => json(200, ADMIN) };
+    serve(routes);
+    await renderApp();
+    routes["GET /api/session"] = () => problem(401, "err.auth.required");
+
+    act(() => sockets[0]?.drop());
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn",
+    );
+    expect(sockets).toHaveLength(1);
   });
 });
