@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Danh mục mã lỗi và cảnh báo",
+  "description": "Bản nháp, chờ chốt các điểm còn mở của ADR 0006 về mã lỗi. Danh mục mã ổn định dùng chung cho phản hồi lỗi theo RFC 9457 (https://www.rfc-editor.org/rfc/rfc9457), cho bản dịch trong `robot-core/src/robot_core/locales/` (vi, en) và cho HMI (ADR 0006, REQ-GW-014, REQ-I18N-004, REQ-I18N-005). Mỗi mục là một giá trị `const` kèm các khoá: `x-kind` là `error` khi mã báo một thất bại (lệnh hay yêu cầu bị từ chối, chu trình bị huỷ hay thất bại, lỗi của thiết bị, dữ liệu hay phần mềm, hoặc máy dừng tới khi có người thao tác) và `warning` khi máy đang chờ, thử lại, tự phục hồi hay chạy suy giảm; `x-http-status` là mã HTTP khi mã được trả trong problem details, không có khi mã chỉ đi qua kênh WSS, telemetry hay nhật ký; `x-i18n-key` là khoá của câu hiển thị trong locale, trùng với mã; `x-text` là câu ngắn vi, en, không có tham số. Problem details: `type` dựng từ `x-problem-type` (tag URI theo RFC 4151, https://www.rfc-editor.org/rfc/rfc4151, không cần phân giải được, RFC 9457 mục 3.1.1), `status` bằng `x-http-status`, `title` lấy `x-text.en` vì là thông báo cho developer, cộng hai member mở rộng `code` (mã) và `params` (object tham số); câu cho người dùng được dựng từ `code` và `params` qua locale. Mã viết thường, gồm ít nhất hai đoạn nối bằng dấu chấm, mỗi đoạn chỉ gồm chữ thường, chữ số và dấu gạch dưới. Mã đã cấp không đổi nghĩa và không dùng lại; đổi hay bỏ một mã là thay đổi không tương thích của `contracts/`. Mã lý do và mã kết quả không báo lỗi hay cảnh báo, như lý do của chuyển pha danh nghĩa hay kết quả của lệnh được nhận, không nằm trong danh mục này.",
+  "x-problem-type": "tag:romdev-hub.github.io,2026:ev-arm/problems/{code}",
+  "type": "string",
+  "oneOf": [
+    { "$ref": "#/$defs/err" },
+    { "$ref": "#/$defs/cmd" },
+    { "$ref": "#/$defs/bay" },
+    { "$ref": "#/$defs/gate" },
+    { "$ref": "#/$defs/maint" },
+    { "$ref": "#/$defs/cam" },
+    { "$ref": "#/$defs/fsm" },
+    { "$ref": "#/$defs/chk" },
+    { "$ref": "#/$defs/safehold" },
+    { "$ref": "#/$defs/supervision" },
+    { "$ref": "#/$defs/arb" },
+    { "$ref": "#/$defs/unserv" },
+    { "$ref": "#/$defs/uq" },
+    { "$ref": "#/$defs/port" },
+    { "$ref": "#/$defs/io" },
+    { "$ref": "#/$defs/arm" },
+    { "$ref": "#/$defs/calib" },
+    { "$ref": "#/$defs/model" },
+    { "$ref": "#/$defs/sim.fault" },
+    { "$ref": "#/$defs/cfg" },
+    { "$ref": "#/$defs/ota" }
+  ],
+  "$defs": {
+    "err": {
+      "title": "API và xác thực",
+      "description": "Lỗi chung của API và lỗi xác thực (REQ-GW-014, REQ-GW-015, REQ-GW-017, REQ-GW-023, REQ-AUTH-001, REQ-AUTH-006, REQ-AUTH-007, REQ-AUTH-011, REQ-AUTH-012).",
+      "oneOf": [
+        { "const": "err.auth.required", "x-kind": "error", "x-http-status": 401, "x-i18n-key": "err.auth.required", "x-text": { "vi": "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn", "en": "Not signed in or the session has expired" } },
+        { "const": "err.auth.invalid_credentials", "x-kind": "error", "x-http-status": 401, "x-i18n-key": "err.auth.invalid_credentials", "x-text": { "vi": "Tên đăng nhập hoặc mật khẩu không đúng", "en": "Incorrect username or password" } },
+        { "const": "err.auth.account_locked", "x-kind": "error", "x-http-status": 403, "x-i18n-key": "err.auth.account_locked", "x-text": { "vi": "Tài khoản đã bị khoá", "en": "Account is locked" } },
+        { "const": "err.auth.forbidden", "x-kind": "error", "x-http-status": 403, "x-i18n-key": "err.auth.forbidden", "x-text": { "vi": "Phiên đăng nhập không có vai trò cần cho thao tác này", "en": "The session lacks the role this action requires" } },
+        { "const": "err.auth.reauth_required", "x-kind": "error", "x-http-status": 403, "x-i18n-key": "err.auth.reauth_required", "x-text": { "vi": "Cần xác thực lại trước thao tác liên quan an toàn", "en": "Re-authentication required before a safety-related operation" } },
+        { "const": "err.not_found", "x-kind": "error", "x-http-status": 404, "x-i18n-key": "err.not_found", "x-text": { "vi": "Không tìm thấy tài nguyên được yêu cầu", "en": "Requested resource not found" } },
+        { "const": "err.internal", "x-kind": "error", "x-http-status": 500, "x-i18n-key": "err.internal", "x-text": { "vi": "Lỗi nội bộ của hệ thống", "en": "Internal system error" } },
+        { "const": "err.not_ready", "x-kind": "error", "x-http-status": 503, "x-i18n-key": "err.not_ready", "x-text": { "vi": "Hệ thống chưa sẵn sàng", "en": "System not ready" } },
+        { "const": "err.telemetry.block_unavailable", "x-kind": "warning", "x-i18n-key": "err.telemetry.block_unavailable", "x-text": { "vi": "Một khối telemetry không dựng được", "en": "A telemetry block could not be built" } }
+      ]
+    },
+    "cmd": {
+      "title": "Lệnh bị từ chối",
+      "description": "Lệnh bị từ chối hoặc không đi tới kết quả (REQ-GW-011, REQ-GW-012, REQ-MIS-012); mã kết quả của lệnh được nhận không nằm ở đây.",
+      "oneOf": [
+        { "const": "cmd.bad_params", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.bad_params", "x-text": { "vi": "Tham số của lệnh thiếu, sai kiểu hoặc ngoài miền", "en": "Command parameters missing, mistyped or out of range" } },
+        { "const": "cmd.unknown", "x-kind": "error", "x-http-status": 404, "x-i18n-key": "cmd.unknown", "x-text": { "vi": "Lệnh không có trong hợp đồng", "en": "Command not defined in the contract" } },
+        { "const": "cmd.timed_out", "x-kind": "error", "x-i18n-key": "cmd.timed_out", "x-text": { "vi": "Lệnh hết thời hạn mà chưa có kết quả", "en": "Command expired before reaching a result" } },
+        { "const": "cmd.session.not_idle", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.session.not_idle", "x-text": { "vi": "Chỉ bắt đầu phiên được khi máy ở S0_IDLE", "en": "A session can start only in S0_IDLE" } },
+        { "const": "cmd.session.abort_refused", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.session.abort_refused", "x-text": { "vi": "Không huỷ phiên được ở trạng thái hiện tại", "en": "The session cannot be aborted in the current state" } },
+        { "const": "cmd.resume.estop_latched", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.resume.estop_latched", "x-text": { "vi": "Chốt dừng khẩn cấp phần cứng chưa được reset", "en": "Hardware emergency stop latch not reset" } },
+        { "const": "cmd.safehold.not_holding", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.safehold.not_holding", "x-text": { "vi": "Máy không ở SAFE_HOLD", "en": "The machine is not in SAFE_HOLD" } },
+        { "const": "cmd.safehold.blocked", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.safehold.blocked", "x-text": { "vi": "Danh sách kiểm của SAFE_HOLD chưa đạt", "en": "The SAFE_HOLD checklist has not passed" } },
+        { "const": "cmd.stuck.not_stuck", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.stuck.not_stuck", "x-text": { "vi": "Máy không ở CONNECTOR_STUCK", "en": "The machine is not in CONNECTOR_STUCK" } },
+        { "const": "cmd.jog.rail_absent", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.jog.rail_absent", "x-text": { "vi": "Trạm không có ray để chạy tay", "en": "The station has no rail to jog" } },
+        { "const": "cmd.jog.delta_bad", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.jog.delta_bad", "x-text": { "vi": "Lượng nhích vượt giới hạn hoặc không hữu hạn", "en": "Jog step over the limit or not finite" } },
+        { "const": "cmd.jog.joint_range", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.jog.joint_range", "x-text": { "vi": "Số thứ tự khớp nằm ngoài khoảng 0 tới 5", "en": "Joint index outside 0 to 5" } },
+        { "const": "cmd.port.always_open", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.port.always_open", "x-text": { "vi": "Adapter này không có công tắc đầu ra chuyển động", "en": "This adapter has no motion output switch" } },
+        { "const": "cmd.port.no_latch", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.port.no_latch", "x-text": { "vi": "Không có chốt lỗi nào để gỡ", "en": "No latched fault to clear" } },
+        { "const": "cmd.vehicle.unknown_car", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.vehicle.unknown_car", "x-text": { "vi": "Xe không có trong danh mục xe", "en": "Vehicle not in the vehicle catalogue" } },
+        { "const": "cmd.camera.bad_path", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.camera.bad_path", "x-text": { "vi": "Đường dẫn camera không hợp lệ", "en": "Invalid camera path" } },
+        { "const": "cmd.camera.pose_fixed", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.camera.pose_fixed", "x-text": { "vi": "Tư thế của camera này không nhập tay được", "en": "This camera's pose cannot be set by hand" } },
+        { "const": "cmd.camera.synthetic_refused", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.camera.synthetic_refused", "x-text": { "vi": "Camera cổ tay không dùng nguồn mô phỏng khi tay máy dùng adapter thật", "en": "The wrist camera cannot use a synthetic source with a real arm adapter" } },
+        { "const": "cmd.camera.wrist_required", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.camera.wrist_required", "x-text": { "vi": "Không gỡ được camera cổ tay", "en": "The wrist camera cannot be removed" } },
+        { "const": "cmd.calib.no_marker", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.calib.no_marker", "x-text": { "vi": "Không thấy marker nào trên khung", "en": "No marker visible in the frame" } },
+        { "const": "cmd.calib.marker_unmapped", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.calib.marker_unmapped", "x-text": { "vi": "Marker thấy được không có trong định nghĩa bia sàn", "en": "Visible markers are not in the floor target definition" } },
+        { "const": "cmd.calib.resid_high", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.calib.resid_high", "x-text": { "vi": "Sai số dư của hiệu chuẩn quá lớn", "en": "Calibration residual too high" } },
+        { "const": "cmd.fault.real_adapter", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.fault.real_adapter", "x-text": { "vi": "Không tiêm hay xoá lỗi giả lập khi đang dùng adapter thật", "en": "Simulated faults cannot be injected or cleared while a real adapter runs" } },
+        { "const": "cmd.bay.connector_in_inlet", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.bay.connector_in_inlet", "x-text": { "vi": "Đầu sạc có thể còn trong cổng ở bay này", "en": "The connector may still be in the inlet at this bay" } },
+        { "const": "cmd.arm.no_adapter", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cmd.arm.no_adapter", "x-text": { "vi": "Model tay máy này không có adapter ArmPort cho tay máy thật", "en": "This arm model has no ArmPort adapter for a real arm" } },
+        { "const": "cmd.arm.urdf_too_large", "x-kind": "error", "x-http-status": 413, "x-i18n-key": "cmd.arm.urdf_too_large", "x-text": { "vi": "File URDF vượt giới hạn kích thước", "en": "URDF file exceeds the size limit" } },
+        { "const": "cmd.arm.urdf_unsafe", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.arm.urdf_unsafe", "x-text": { "vi": "File URDF không parse an toàn được", "en": "URDF file cannot be parsed safely" } },
+        { "const": "cmd.arm.chain_invalid", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cmd.arm.chain_invalid", "x-text": { "vi": "Model không mô tả một chuỗi khớp hợp lệ", "en": "The model does not describe a valid joint chain" } }
+      ]
+    },
+    "bay": {
+      "title": "Bay",
+      "description": "Lệnh nhắm tới bay không tồn tại (REQ-SIM-026).",
+      "oneOf": [
+        { "const": "bay.not_found", "x-kind": "error", "x-http-status": 404, "x-i18n-key": "bay.not_found", "x-text": { "vi": "Không có bay này", "en": "Bay not found" } }
+      ]
+    },
+    "gate": {
+      "title": "Lệnh bị chặn theo trạng thái",
+      "description": "Lệnh bị chặn vì trạng thái của máy (REQ-MIS-072, REQ-MOT-027, REQ-OTA-009).",
+      "oneOf": [
+        { "const": "gate.estop_active", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "gate.estop_active", "x-text": { "vi": "Lệnh bị chặn khi nút dừng khẩn cấp phần cứng hay lệnh Dừng còn hiệu lực", "en": "Blocked while a hardware emergency stop or the Stop command is active" } },
+        { "const": "gate.hold_active", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "gate.hold_active", "x-text": { "vi": "Lệnh bị chặn khi đang tạm giữ", "en": "Blocked while on hold" } },
+        { "const": "gate.cycle_running_cfg", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "gate.cycle_running_cfg", "x-text": { "vi": "Chỉ đổi cấu hình được ở S0_IDLE hoặc MAINTENANCE", "en": "Configuration can change only in S0_IDLE or MAINTENANCE" } },
+        { "const": "gate.cycle_running_jog", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "gate.cycle_running_jog", "x-text": { "vi": "Chạy tay hoặc về home không được phép ở trạng thái hiện tại", "en": "Jogging or homing is not allowed in the current state" } },
+        { "const": "gate.update_running", "x-kind": "error", "x-http-status": 503, "x-i18n-key": "gate.update_running", "x-text": { "vi": "Đang cập nhật, mọi lệnh bị từ chối", "en": "Update in progress, commands are refused" } }
+      ]
+    },
+    "maint": {
+      "title": "Bảo trì",
+      "description": "Lệnh vào bảo trì bị từ chối (REQ-MIS-071).",
+      "oneOf": [
+        { "const": "maint.estop_first", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "maint.estop_first", "x-text": { "vi": "Không vào bảo trì được khi nút dừng khẩn cấp phần cứng hay lệnh Dừng còn hiệu lực", "en": "Cannot enter maintenance while a hardware emergency stop or the Stop command is active" } },
+        { "const": "maint.plugged", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "maint.plugged", "x-text": { "vi": "Không vào bảo trì được khi đầu sạc có thể còn trong cổng", "en": "Cannot enter maintenance while the connector may still be in the inlet" } }
+      ]
+    },
+    "cam": {
+      "title": "Tư thế camera",
+      "description": "Tư thế camera nhập tay bị từ chối (REQ-PER-019).",
+      "oneOf": [
+        { "const": "cam.pose.fov_range", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cam.pose.fov_range", "x-text": { "vi": "Góc mở ngoài khoảng cho phép", "en": "Field of view out of range" } },
+        { "const": "cam.pose.too_far", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cam.pose.too_far", "x-text": { "vi": "Toạ độ camera quá xa gốc", "en": "Camera coordinates too far from the origin" } }
+      ]
+    },
+    "fsm": {
+      "title": "Lý do chuyển pha",
+      "description": "Lý do vào trạng thái ngoại lệ hoặc rời chu trình danh nghĩa (REQ-MIS-003); lý do của chuyển pha danh nghĩa không nằm ở đây.",
+      "oneOf": [
+        { "const": "fsm.safe_hold.internal_fault", "x-kind": "error", "x-i18n-key": "fsm.safe_hold.internal_fault", "x-text": { "vi": "Lỗi không lường trước trong vòng giám sát", "en": "Unexpected fault in the supervision loop" } },
+        { "const": "fsm.safe_hold.arm_data", "x-kind": "error", "x-i18n-key": "fsm.safe_hold.arm_data", "x-text": { "vi": "Số liệu của tay máy cũ, mất kết nối hoặc adapter lỗi", "en": "Arm data stale, connection lost or adapter fault" } },
+        { "const": "fsm.safe_hold.rail_data", "x-kind": "error", "x-i18n-key": "fsm.safe_hold.rail_data", "x-text": { "vi": "Số liệu của ray cũ, mất kết nối hoặc adapter lỗi", "en": "Rail data stale, connection lost or adapter fault" } },
+        { "const": "fsm.safe_hold.io_data", "x-kind": "error", "x-i18n-key": "fsm.safe_hold.io_data", "x-text": { "vi": "Số liệu I/O cũ, mất kết nối hoặc adapter lỗi", "en": "I/O data stale, connection lost or adapter fault" } },
+        { "const": "fsm.safe_hold.force_data", "x-kind": "error", "x-i18n-key": "fsm.safe_hold.force_data", "x-text": { "vi": "Số liệu của kênh lực cũ, mất kết nối hoặc adapter lỗi", "en": "Force data stale, connection lost or adapter fault" } },
+        { "const": "fsm.safe_hold.exit_refused", "x-kind": "warning", "x-i18n-key": "fsm.safe_hold.exit_refused", "x-text": { "vi": "Chưa rời được SAFE_HOLD vì chưa nghiệm thu", "en": "Cannot leave SAFE_HOLD before it is cleared" } },
+        { "const": "fsm.safe_stop.estop", "x-kind": "error", "x-i18n-key": "fsm.safe_stop.estop", "x-text": { "vi": "Nút dừng khẩn cấp phần cứng đang bị ấn hoặc chưa được reset", "en": "Hardware emergency stop pressed or not reset" } },
+        { "const": "fsm.safe_stop.stop_command", "x-kind": "error", "x-i18n-key": "fsm.safe_stop.stop_command", "x-text": { "vi": "Máy dừng theo lệnh Dừng", "en": "Stopped by the Stop command" } },
+        { "const": "fsm.safe_stop.watchdog", "x-kind": "warning", "x-i18n-key": "fsm.safe_stop.watchdog", "x-text": { "vi": "Mức giám sát STOP khi tay máy đang dấn vào xe", "en": "Supervision level STOP while the arm is engaged with the vehicle" } },
+        { "const": "fsm.human_present_pause", "x-kind": "warning", "x-i18n-key": "fsm.human_present_pause", "x-text": { "vi": "Có người trong vùng dừng khi tay máy đang dấn vào xe", "en": "Person in the stop zone while the arm is engaged with the vehicle" } },
+        { "const": "fsm.weather_hold", "x-kind": "warning", "x-i18n-key": "fsm.weather_hold", "x-text": { "vi": "Thời tiết không cho phép chạy", "en": "Weather does not allow operation" } },
+        { "const": "fsm.calibration_blocked", "x-kind": "warning", "x-i18n-key": "fsm.calibration_blocked", "x-text": { "vi": "Hiệu chuẩn không còn hợp lệ", "en": "Calibration no longer valid" } },
+        { "const": "fsm.s5.no_auth_backend", "x-kind": "warning", "x-i18n-key": "fsm.s5.no_auth_backend", "x-text": { "vi": "Chưa cấu hình dịch vụ xác thực phiên, chạy tiếp không xác thực", "en": "No session authorisation service configured, continuing without it" } },
+        { "const": "fsm.retry_search.not_seen", "x-kind": "warning", "x-i18n-key": "fsm.retry_search.not_seen", "x-text": { "vi": "Chưa thấy cổng sạc trong thời hạn, tìm lại", "en": "Inlet not seen in time, searching again" } },
+        { "const": "fsm.retry_search.uq_fail", "x-kind": "warning", "x-i18n-key": "fsm.retry_search.uq_fail", "x-text": { "vi": "Ước lượng cổng chưa đủ tin cậy trong thời hạn, tìm lại", "en": "Inlet estimate not reliable in time, searching again" } },
+        { "const": "fsm.retry_search.align_fail", "x-kind": "warning", "x-i18n-key": "fsm.retry_search.align_fail", "x-text": { "vi": "Chưa đồng trục trong thời hạn, tìm lại", "en": "Not coaxial in time, searching again" } },
+        { "const": "fsm.retry_insert.seat_timeout", "x-kind": "warning", "x-i18n-key": "fsm.retry_insert.seat_timeout", "x-text": { "vi": "Chưa chạm đáy trong thời hạn, cắm lại", "en": "Not seated in time, reinserting" } },
+        { "const": "fsm.retry_insert.force_over", "x-kind": "warning", "x-i18n-key": "fsm.retry_insert.force_over", "x-text": { "vi": "Lực cắm vượt giới hạn, cắm lại", "en": "Insertion force over the limit, reinserting" } },
+        { "const": "fsm.s16.inlet_overtemp", "x-kind": "warning", "x-i18n-key": "fsm.s16.inlet_overtemp", "x-text": { "vi": "Chân sạc quá nhiệt, kết thúc phiên sạc", "en": "Inlet over temperature, ending the charging session" } },
+        { "const": "fsm.s16.session_overtime", "x-kind": "warning", "x-i18n-key": "fsm.s16.session_overtime", "x-text": { "vi": "Phiên sạc vượt thời gian tối đa", "en": "Charging session exceeded the maximum duration" } },
+        { "const": "fsm.abort_unplug.connector_still_in_inlet", "x-kind": "warning", "x-i18n-key": "fsm.abort_unplug.connector_still_in_inlet", "x-text": { "vi": "Đầu sạc có thể còn trong cổng, rút trước khi thu tay", "en": "Connector may still be in the inlet, unplugging before retraction" } },
+        { "const": "fsm.abort_retract.body_contact", "x-kind": "error", "x-i18n-key": "fsm.abort_retract.body_contact", "x-text": { "vi": "Tay máy chạm vỏ xe, huỷ chu trình", "en": "Arm touched the vehicle body, cycle aborted" } },
+        { "const": "fsm.abort_retract.search_exhausted", "x-kind": "error", "x-i18n-key": "fsm.abort_retract.search_exhausted", "x-text": { "vi": "Hết số lần tìm lại cổng, huỷ chu trình", "en": "Inlet search retries exhausted, cycle aborted" } },
+        { "const": "fsm.abort_retract.vehicle_moved", "x-kind": "error", "x-i18n-key": "fsm.abort_retract.vehicle_moved", "x-text": { "vi": "Xe xê dịch quá giới hạn sau khi cam kết trục, huỷ chu trình", "en": "Vehicle moved beyond the limit after axis commitment, cycle aborted" } },
+        { "const": "fsm.connector_stuck.body_contact", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.body_contact", "x-text": { "vi": "Tay máy chạm vỏ xe lần thứ ba", "en": "Arm touched the vehicle body a third time" } },
+        { "const": "fsm.connector_stuck.ik_diverged", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.ik_diverged", "x-text": { "vi": "Không có lời giải IK đáng tin khi đầu sạc ở sát cổng", "en": "No reliable IK solution with the connector at the inlet" } },
+        { "const": "fsm.connector_stuck.insert_force_3x", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.insert_force_3x", "x-text": { "vi": "Lực cắm vượt giới hạn sau ba lần cắm lại", "en": "Insertion force over the limit after three reinsertions" } },
+        { "const": "fsm.connector_stuck.lock_wont_close", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.lock_wont_close", "x-text": { "vi": "Chốt khoá đầu sạc không đóng", "en": "Connector lock did not close" } },
+        { "const": "fsm.connector_stuck.lock_wont_open", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.lock_wont_open", "x-text": { "vi": "Chốt khoá đầu sạc không nhả", "en": "Connector lock did not release" } },
+        { "const": "fsm.connector_stuck.axial_force", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.axial_force", "x-text": { "vi": "Lực dọc trục không về gần 0 khi rút", "en": "Axial force did not fall near zero during extraction" } },
+        { "const": "fsm.connector_stuck.unplug_timeout", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.unplug_timeout", "x-text": { "vi": "Quá thời hạn rút mà chưa có bằng chứng đầu sạc đã ra", "en": "Unplug timed out without evidence the connector is out" } },
+        { "const": "fsm.connector_stuck.retract_timeout", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.retract_timeout", "x-text": { "vi": "Quá thời hạn thu tay khi huỷ chu trình", "en": "Retraction timed out while aborting" } },
+        { "const": "fsm.connector_stuck.home_timeout", "x-kind": "error", "x-i18n-key": "fsm.connector_stuck.home_timeout", "x-text": { "vi": "Tay máy không về tư thế cất trong thời hạn", "en": "Arm did not reach the stow pose in time" } },
+        { "const": "fsm.session_failed.out_of_reach", "x-kind": "error", "x-i18n-key": "fsm.session_failed.out_of_reach", "x-text": { "vi": "Cổng sạc ngoài tầm với", "en": "Charging inlet out of reach" } },
+        { "const": "fsm.session_failed.side_mismatch", "x-kind": "error", "x-i18n-key": "fsm.session_failed.side_mismatch", "x-text": { "vi": "Cổng sạc nằm khác phía với bay", "en": "Charging inlet on the other side from the bay" } },
+        { "const": "fsm.session_failed.auth_rejected", "x-kind": "error", "x-i18n-key": "fsm.session_failed.auth_rejected", "x-text": { "vi": "Phiên sạc bị từ chối xác thực", "en": "Charging session authorisation rejected" } },
+        { "const": "fsm.session_failed.auth_timeout", "x-kind": "error", "x-i18n-key": "fsm.session_failed.auth_timeout", "x-text": { "vi": "Quá thời hạn xác thực phiên sạc", "en": "Charging session authorisation timed out" } },
+        { "const": "fsm.session_failed.flap_stuck", "x-kind": "error", "x-i18n-key": "fsm.session_failed.flap_stuck", "x-text": { "vi": "Nắp cổng sạc không mở trong thời hạn", "en": "Inlet flap did not open in time" } },
+        { "const": "fsm.session_failed.cp_no_9v", "x-kind": "error", "x-i18n-key": "fsm.session_failed.cp_no_9v", "x-text": { "vi": "Control Pilot không lên 9 V trong thời hạn", "en": "Control Pilot did not reach 9 V in time" } },
+        { "const": "fsm.session_failed.handshake_timeout", "x-kind": "error", "x-i18n-key": "fsm.session_failed.handshake_timeout", "x-text": { "vi": "Quá thời hạn bắt tay với bộ sạc", "en": "Charger handshake timed out" } },
+        { "const": "fsm.session_failed.contactor_welded", "x-kind": "error", "x-i18n-key": "fsm.session_failed.contactor_welded", "x-text": { "vi": "Dòng sạc không về 0 trong thời hạn, nghi contactor bị dính", "en": "Charging current did not reach zero in time, contactor may be welded" } },
+        { "const": "fsm.maintenance.inlet_type_mismatch", "x-kind": "error", "x-i18n-key": "fsm.maintenance.inlet_type_mismatch", "x-text": { "vi": "Loại cổng sạc khác loại khai trong danh mục xe", "en": "Inlet type differs from the vehicle catalogue" } },
+        { "const": "fsm.maintenance.precheck_machine_fail", "x-kind": "error", "x-i18n-key": "fsm.maintenance.precheck_machine_fail", "x-text": { "vi": "Điều kiện máy ở S6_PRECHECK không đạt quá thời hạn", "en": "Machine conditions in S6_PRECHECK failed past the time limit" } },
+        { "const": "fsm.maintenance.transit_timeout", "x-kind": "error", "x-i18n-key": "fsm.maintenance.transit_timeout", "x-text": { "vi": "Tay máy không tới điểm chờ trong thời hạn di chuyển", "en": "Arm did not reach the standoff point within the transit limit" } }
+      ]
+    },
+    "chk": {
+      "title": "Danh sách kiểm SAFE_HOLD",
+      "description": "Mục trượt của danh sách kiểm SAFE_HOLD (REQ-MIS-015); mã được báo khi mục đó trượt.",
+      "oneOf": [
+        { "const": "chk.motion_port", "x-kind": "warning", "x-i18n-key": "chk.motion_port", "x-text": { "vi": "Tay máy chưa kết nối", "en": "Arm not connected" } },
+        { "const": "chk.kinematics", "x-kind": "warning", "x-i18n-key": "chk.kinematics", "x-text": { "vi": "Động học chưa tính từ góc khớp đo được", "en": "Kinematics not computed from measured joint angles" } },
+        { "const": "chk.collision", "x-kind": "warning", "x-i18n-key": "chk.collision", "x-text": { "vi": "Phép kiểm va chạm không chạy được", "en": "Collision check cannot run" } },
+        { "const": "chk.camera", "x-kind": "warning", "x-i18n-key": "chk.camera", "x-text": { "vi": "Không có camera nào đang bật", "en": "No camera enabled" } },
+        { "const": "chk.calib", "x-kind": "warning", "x-i18n-key": "chk.calib", "x-text": { "vi": "Hiệu chuẩn chưa hợp lệ", "en": "Calibration not valid" } },
+        { "const": "chk.estop", "x-kind": "warning", "x-i18n-key": "chk.estop", "x-text": { "vi": "Nút dừng khẩn cấp phần cứng chưa nhả", "en": "Hardware emergency stop not released" } },
+        { "const": "chk.safety_level", "x-kind": "warning", "x-i18n-key": "chk.safety_level", "x-text": { "vi": "Mức giám sát khác OK", "en": "Supervision level is not OK" } }
+      ]
+    },
+    "safehold": {
+      "title": "Khởi động vào SAFE_HOLD",
+      "description": "Lý do bật cờ nghi đầu sạc trong cổng, hoặc lần tắt trước không sạch, lúc khởi động (REQ-MIS-014); `safehold.clean` và `safehold.no_trace` không báo cảnh báo nên không nằm ở đây.",
+      "oneOf": [
+        { "const": "safehold.crash_plugged", "x-kind": "warning", "x-i18n-key": "safehold.crash_plugged", "x-text": { "vi": "Lần tắt trước không sạch và đầu sạc còn trong cổng", "en": "Previous shutdown not clean with the connector in the inlet" } },
+        { "const": "safehold.clean_but_plugged", "x-kind": "warning", "x-i18n-key": "safehold.clean_but_plugged", "x-text": { "vi": "Lần tắt trước sạch nhưng đầu sạc còn trong cổng", "en": "Previous shutdown clean but the connector was in the inlet" } },
+        { "const": "safehold.trace_corrupt", "x-kind": "warning", "x-i18n-key": "safehold.trace_corrupt", "x-text": { "vi": "Không đọc được dấu vết vận hành của lần chạy trước", "en": "Operating trace of the previous run is unreadable" } },
+        { "const": "safehold.crash_unplugged", "x-kind": "warning", "x-i18n-key": "safehold.crash_unplugged", "x-text": { "vi": "Lần tắt trước không sạch, đầu sạc đã ở ngoài cổng", "en": "Previous shutdown not clean, the connector was out of the inlet" } }
+      ]
+    },
+    "supervision": {
+      "title": "Mức giám sát",
+      "description": "Lý do của mức giám sát khác `OK` (REQ-MIS-073, REQ-MIS-074, REQ-GW-008); mức giám sát không phải chức năng an toàn (ADR 0005).",
+      "oneOf": [
+        { "const": "supervision.estop_hardware", "x-kind": "error", "x-i18n-key": "supervision.estop_hardware", "x-text": { "vi": "Nút dừng khẩn cấp phần cứng đang bị ấn hoặc chưa được reset", "en": "Hardware emergency stop pressed or not reset" } },
+        { "const": "supervision.stop_command", "x-kind": "error", "x-i18n-key": "supervision.stop_command", "x-text": { "vi": "Lệnh Dừng đang có hiệu lực", "en": "Stop command active" } },
+        { "const": "supervision.person_in_stop_zone", "x-kind": "warning", "x-i18n-key": "supervision.person_in_stop_zone", "x-text": { "vi": "Có người trong vùng dừng", "en": "Person in the stop zone" } },
+        { "const": "supervision.hold", "x-kind": "warning", "x-i18n-key": "supervision.hold", "x-text": { "vi": "Đang tạm giữ theo lệnh", "en": "On hold by command" } },
+        { "const": "supervision.wrist_camera_lost", "x-kind": "warning", "x-i18n-key": "supervision.wrist_camera_lost", "x-text": { "vi": "Không còn khung mới từ camera cổ tay", "en": "No recent frames from the wrist camera" } },
+        { "const": "supervision.progress_latched", "x-kind": "error", "x-i18n-key": "supervision.progress_latched", "x-text": { "vi": "Đang chốt lỗi tiến trình chuyển động", "en": "Motion progress fault latched" } },
+        { "const": "supervision.no_person_zone_source", "x-kind": "error", "x-i18n-key": "supervision.no_person_zone_source", "x-text": { "vi": "Chưa có nguồn tín hiệu vùng người trên thiết bị thật", "en": "No person-zone signal source on real hardware" } },
+        { "const": "supervision.person_in_slow_zone", "x-kind": "warning", "x-i18n-key": "supervision.person_in_slow_zone", "x-text": { "vi": "Có người trong vùng giảm tốc", "en": "Person in the slow-down zone" } }
+      ]
+    },
+    "arb": {
+      "title": "Bộ kiểm segment",
+      "description": "Segment bị bộ kiểm segment từ chối (REQ-MOT-014, REQ-MOT-020, REQ-MOT-021).",
+      "oneOf": [
+        { "const": "arb.body_contact", "x-kind": "error", "x-i18n-key": "arb.body_contact", "x-text": { "vi": "Segment chạm vỏ xe ngoài vùng miễn trừ", "en": "Segment would touch the vehicle body outside the exemption zone" } },
+        { "const": "arb.collision_blind", "x-kind": "error", "x-i18n-key": "arb.collision_blind", "x-text": { "vi": "Phép kiểm va chạm không chạy được", "en": "Collision check could not run" } },
+        { "const": "arb.torque_over", "x-kind": "error", "x-i18n-key": "arb.torque_over", "x-text": { "vi": "Mô-men khớp vượt ngưỡng dự trữ", "en": "Joint torque over the reserve threshold" } },
+        { "const": "arb.torque_blind", "x-kind": "error", "x-i18n-key": "arb.torque_blind", "x-text": { "vi": "Không tính được mô-men khớp", "en": "Joint torque could not be computed" } }
+      ]
+    },
+    "unserv": {
+      "title": "Xe không phục vụ được",
+      "description": "Kết luận xe không phục vụ được (REQ-MIS-079).",
+      "oneOf": [
+        { "const": "unserv.reversed", "x-kind": "error", "x-i18n-key": "unserv.reversed", "x-text": { "vi": "Xe đỗ ngược", "en": "Vehicle parked in reverse" } },
+        { "const": "unserv.out_of_reach", "x-kind": "error", "x-i18n-key": "unserv.out_of_reach", "x-text": { "vi": "Cổng sạc ngoài tầm với", "en": "Charging inlet out of reach" } },
+        { "const": "unserv.no_valid_ik", "x-kind": "error", "x-i18n-key": "unserv.no_valid_ik", "x-text": { "vi": "Không có lời giải IK hợp lệ", "en": "No valid IK solution" } },
+        { "const": "unserv.no_preset_fits", "x-kind": "error", "x-i18n-key": "unserv.no_preset_fits", "x-text": { "vi": "Không model tay máy có sẵn nào với tới được", "en": "No preset arm model can reach" } }
+      ]
+    },
+    "uq": {
+      "title": "Cổng bất định",
+      "description": "Tín hiệu trượt của cổng bất định: S1, S2, S3 (REQ-PER-043, REQ-PER-044).",
+      "oneOf": [
+        { "const": "uq.reprojection", "x-kind": "warning", "x-i18n-key": "uq.reprojection", "x-text": { "vi": "Sai số chiếu lại hoặc tỉ lệ điểm khớp không đạt", "en": "Reprojection error or inlier ratio not met" } },
+        { "const": "uq.ambiguity", "x-kind": "warning", "x-i18n-key": "uq.ambiguity", "x-text": { "vi": "Hai nghiệm tư thế cổng nhập nhằng", "en": "Inlet pose solutions are ambiguous" } },
+        { "const": "uq.point_fit", "x-kind": "warning", "x-i18n-key": "uq.point_fit", "x-text": { "vi": "Độ khớp từng điểm không đạt", "en": "Per-point fit not met" } }
+      ]
+    },
+    "port": {
+      "title": "Port và adapter",
+      "description": "Lỗi của port và adapter (REQ-HAL-001 tới REQ-HAL-030, REQ-MOT-024, REQ-MOT-026); tên port nằm trong tham số `port`.",
+      "oneOf": [
+        { "const": "port.adapter_unknown", "x-kind": "error", "x-i18n-key": "port.adapter_unknown", "x-text": { "vi": "Adapter khai trong cấu hình không có trong danh mục", "en": "Configured adapter is unknown" } },
+        { "const": "port.connect_failed", "x-kind": "error", "x-i18n-key": "port.connect_failed", "x-text": { "vi": "Không nối được thiết bị", "en": "Device connection failed" } },
+        { "const": "port.disconnected", "x-kind": "error", "x-i18n-key": "port.disconnected", "x-text": { "vi": "Mất kết nối với thiết bị", "en": "Device connection lost" } },
+        { "const": "port.stale_data", "x-kind": "error", "x-i18n-key": "port.stale_data", "x-text": { "vi": "Số liệu của thiết bị cũ hơn ngưỡng tuổi", "en": "Device data older than the age limit" } },
+        { "const": "port.adapter_fault", "x-kind": "error", "x-i18n-key": "port.adapter_fault", "x-text": { "vi": "Adapter báo lỗi", "en": "Adapter reported a fault" } },
+        { "const": "port.not_connected", "x-kind": "error", "x-i18n-key": "port.not_connected", "x-text": { "vi": "Port chưa nối thiết bị", "en": "No device connected to the port" } },
+        { "const": "port.command_refused", "x-kind": "error", "x-i18n-key": "port.command_refused", "x-text": { "vi": "Thiết bị từ chối lệnh", "en": "Device refused the command" } },
+        { "const": "port.send_failed", "x-kind": "error", "x-i18n-key": "port.send_failed", "x-text": { "vi": "Gửi lệnh tới thiết bị thất bại nhiều lần liên tiếp", "en": "Repeated failures sending commands to the device" } },
+        { "const": "port.host_timeout", "x-kind": "error", "x-i18n-key": "port.host_timeout", "x-text": { "vi": "Vòng giám sát không gửi lệnh hay nhịp sống trong thời hạn", "en": "Supervision loop sent no command or heartbeat in time" } },
+        { "const": "port.tracking_error", "x-kind": "error", "x-i18n-key": "port.tracking_error", "x-text": { "vi": "Tay máy hoặc ray lệch khỏi lệnh quá dung sai", "en": "Arm or rail deviates from the command beyond tolerance" } },
+        { "const": "port.dimension_mismatch", "x-kind": "error", "x-i18n-key": "port.dimension_mismatch", "x-text": { "vi": "Số khớp của lệnh khác số khớp của model", "en": "Command joint count differs from the model" } },
+        { "const": "port.non_finite", "x-kind": "error", "x-i18n-key": "port.non_finite", "x-text": { "vi": "Lệnh có giá trị không hữu hạn", "en": "Command contains a non-finite value" } },
+        { "const": "port.segment_unknown", "x-kind": "error", "x-i18n-key": "port.segment_unknown", "x-text": { "vi": "Loại segment không biết", "en": "Unknown segment type" } },
+        { "const": "port.speed_out_of_range", "x-kind": "error", "x-i18n-key": "port.speed_out_of_range", "x-text": { "vi": "Hệ số tốc độ ngoài khoảng 0 tới 1", "en": "Speed factor outside 0 to 1" } },
+        { "const": "port.rearm_refused", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "port.rearm_refused", "x-text": { "vi": "Controller chưa sẵn sàng, chưa gỡ được chốt lỗi", "en": "Controller not ready, latched fault not cleared" } },
+        { "const": "port.protocol_unknown", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "port.protocol_unknown", "x-text": { "vi": "Giao thức không có trong danh mục", "en": "Protocol not in the catalogue" } },
+        { "const": "port.no_module", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "port.no_module", "x-text": { "vi": "Giao thức chưa có adapter", "en": "Protocol has no adapter yet" } },
+        { "const": "port.rail.fixed_base", "x-kind": "error", "x-i18n-key": "port.rail.fixed_base", "x-text": { "vi": "Trạm không có ray, đế cố định không di chuyển được", "en": "No rail, the fixed base cannot move" } },
+        { "const": "port.output.key_manual", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "port.output.key_manual", "x-text": { "vi": "Khoá chọn chế độ đang ở thủ công", "en": "Mode selector key is in manual" } },
+        { "const": "port.force.zero_refused", "x-kind": "error", "x-i18n-key": "port.force.zero_refused", "x-text": { "vi": "Cảm biến lực không nhận lệnh đưa về 0", "en": "Force sensor refused zeroing" } }
+      ]
+    },
+    "io": {
+      "title": "Adapter I/O rỗng",
+      "description": "Lệnh ra bị adapter I/O rỗng từ chối (REQ-HAL-004).",
+      "oneOf": [
+        { "const": "io.no_port.light", "x-kind": "error", "x-i18n-key": "io.no_port.light", "x-text": { "vi": "Chưa nối I/O, không đặt được đèn tháp", "en": "No I/O connected, tower light not set" } },
+        { "const": "io.no_port.lock", "x-kind": "error", "x-i18n-key": "io.no_port.lock", "x-text": { "vi": "Chưa nối I/O, không điều khiển được chốt khoá", "en": "No I/O connected, connector lock not driven" } }
+      ]
+    },
+    "arm": {
+      "title": "Model tay máy và tool",
+      "description": "Model tay máy, hồ sơ tool và động học (REQ-ARM-005, REQ-ARM-007, REQ-ARM-015, REQ-ARM-022).",
+      "oneOf": [
+        { "const": "arm.kinematics_unavailable", "x-kind": "error", "x-i18n-key": "arm.kinematics_unavailable", "x-text": { "vi": "Chức năng động học không khả dụng", "en": "Kinematics unavailable" } },
+        { "const": "arm.dynamics_unavailable", "x-kind": "warning", "x-i18n-key": "arm.dynamics_unavailable", "x-text": { "vi": "Model thiếu thông số quán tính, động lực học bị tắt", "en": "Model lacks inertia parameters, dynamics disabled" } },
+        { "const": "arm.fk_mismatch", "x-kind": "error", "x-i18n-key": "arm.fk_mismatch", "x-text": { "vi": "FK của model lệch tư thế controller báo, đầu ra chuyển động bị khoá", "en": "Model FK differs from the controller pose, motion output locked" } },
+        { "const": "arm.tool_mismatch", "x-kind": "error", "x-i18n-key": "arm.tool_mismatch", "x-text": { "vi": "Hồ sơ tool đọc lại khác hồ sơ đã đặt, đầu ra chuyển động bị khoá", "en": "Tool profile read back differs from the one set, motion output locked" } }
+      ]
+    },
+    "calib": {
+      "title": "Hiệu chuẩn",
+      "description": "Lý do hiệu chuẩn không hợp lệ (REQ-CAL-001, REQ-CAL-002).",
+      "oneOf": [
+        { "const": "calib.no_wrist_camera", "x-kind": "warning", "x-i18n-key": "calib.no_wrist_camera", "x-text": { "vi": "Không có camera cổ tay", "en": "No wrist camera" } },
+        { "const": "calib.no_intrinsics", "x-kind": "warning", "x-i18n-key": "calib.no_intrinsics", "x-text": { "vi": "Nội tham số của camera cổ tay chưa đo", "en": "Wrist camera intrinsics not measured" } },
+        { "const": "calib.no_hand_eye", "x-kind": "warning", "x-i18n-key": "calib.no_hand_eye", "x-text": { "vi": "Phép biến đổi tay-mắt chưa đo", "en": "Hand-eye transform not measured" } },
+        { "const": "calib.no_extrinsics", "x-kind": "warning", "x-i18n-key": "calib.no_extrinsics", "x-text": { "vi": "Chưa có ngoại tham số từ bia sàn", "en": "No floor target extrinsics" } },
+        { "const": "calib.expired", "x-kind": "warning", "x-i18n-key": "calib.expired", "x-text": { "vi": "Ngoại tham số từ bia sàn đã quá hạn", "en": "Floor target extrinsics expired" } },
+        { "const": "calib.injected_drift", "x-kind": "warning", "x-i18n-key": "calib.injected_drift", "x-text": { "vi": "Lỗi giả lập lệch ngoại tham số đang bật", "en": "Simulated extrinsics drift active" } }
+      ]
+    },
+    "model": {
+      "title": "Model học máy",
+      "description": "Model học máy bị từ chối nạp (REQ-PER-033, REQ-PER-034, REQ-OTA-013).",
+      "oneOf": [
+        { "const": "model.checksum_mismatch", "x-kind": "error", "x-i18n-key": "model.checksum_mismatch", "x-text": { "vi": "SHA-256 của model học máy không khớp release manifest", "en": "ML model SHA-256 does not match the release manifest" } },
+        { "const": "model.signature_invalid", "x-kind": "error", "x-i18n-key": "model.signature_invalid", "x-text": { "vi": "Chữ ký của model học máy không hợp lệ", "en": "ML model signature invalid" } },
+        { "const": "model.contract_mismatch", "x-kind": "error", "x-i18n-key": "model.contract_mismatch", "x-text": { "vi": "Đầu ra của model học máy không khớp hợp đồng của perception", "en": "ML model outputs do not match the perception contract" } }
+      ]
+    },
+    "sim.fault": {
+      "title": "Lỗi giả lập",
+      "description": "Lỗi giả lập đang bật; phần cuối của mã là tên lỗi viết thường trong danh mục lỗi giả lập (REQ-SIM-016).",
+      "oneOf": [
+        { "const": "sim.fault.camera_dropout", "x-kind": "warning", "x-i18n-key": "sim.fault.camera_dropout", "x-text": { "vi": "Giả lập mất tín hiệu camera cổ tay", "en": "Simulated wrist camera dropout" } },
+        { "const": "sim.fault.sun_glare", "x-kind": "warning", "x-i18n-key": "sim.fault.sun_glare", "x-text": { "vi": "Giả lập loá nắng", "en": "Simulated sun glare" } },
+        { "const": "sim.fault.lens_blur", "x-kind": "warning", "x-i18n-key": "sim.fault.lens_blur", "x-text": { "vi": "Giả lập mờ ống kính", "en": "Simulated lens blur" } },
+        { "const": "sim.fault.calib_drift", "x-kind": "warning", "x-i18n-key": "sim.fault.calib_drift", "x-text": { "vi": "Giả lập lệch ngoại tham số camera", "en": "Simulated camera extrinsics drift" } },
+        { "const": "sim.fault.port_vibration", "x-kind": "warning", "x-i18n-key": "sim.fault.port_vibration", "x-text": { "vi": "Giả lập cổng sạc rung", "en": "Simulated inlet vibration" } },
+        { "const": "sim.fault.flap_stuck", "x-kind": "warning", "x-i18n-key": "sim.fault.flap_stuck", "x-text": { "vi": "Giả lập kẹt nắp cổng sạc", "en": "Simulated stuck inlet flap" } },
+        { "const": "sim.fault.force_overload", "x-kind": "warning", "x-i18n-key": "sim.fault.force_overload", "x-text": { "vi": "Giả lập lực cản khi cắm vượt giới hạn", "en": "Simulated insertion force overload" } },
+        { "const": "sim.fault.cp_wire_fault", "x-kind": "warning", "x-i18n-key": "sim.fault.cp_wire_fault", "x-text": { "vi": "Giả lập đứt dây Control Pilot", "en": "Simulated broken Control Pilot wire" } },
+        { "const": "sim.fault.lock_pin_jam", "x-kind": "warning", "x-i18n-key": "sim.fault.lock_pin_jam", "x-text": { "vi": "Giả lập kẹt chốt khoá khi cắm", "en": "Simulated lock pin jam on insertion" } },
+        { "const": "sim.fault.unlock_jam", "x-kind": "warning", "x-i18n-key": "sim.fault.unlock_jam", "x-text": { "vi": "Giả lập kẹt chốt khoá khi sạc xong", "en": "Simulated lock jam after charging" } },
+        { "const": "sim.fault.inlet_overheat", "x-kind": "warning", "x-i18n-key": "sim.fault.inlet_overheat", "x-text": { "vi": "Giả lập quá nhiệt chân sạc", "en": "Simulated inlet overheat" } },
+        { "const": "sim.fault.human_intrusion", "x-kind": "warning", "x-i18n-key": "sim.fault.human_intrusion", "x-text": { "vi": "Giả lập người vào vùng dừng", "en": "Simulated person in the stop zone" } }
+      ]
+    },
+    "cfg": {
+      "title": "Cấu hình trạm",
+      "description": "Kiểm, lưu, nạp và nhập cấu hình trạm (REQ-CFG-002, REQ-CFG-004, REQ-CFG-008, REQ-CFG-009, REQ-CFG-015, REQ-CFG-028); trường bị từ chối nằm trong tham số.",
+      "oneOf": [
+        { "const": "cfg.schema_invalid", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cfg.schema_invalid", "x-text": { "vi": "Cấu hình không đúng schema", "en": "Configuration does not match the schema" } },
+        { "const": "cfg.out_of_bounds", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cfg.out_of_bounds", "x-text": { "vi": "Giá trị cấu hình ngoài biên cứng", "en": "Configuration value outside hard bounds" } },
+        { "const": "cfg.cross_check_failed", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cfg.cross_check_failed", "x-text": { "vi": "Cấu hình vi phạm ràng buộc chéo", "en": "Configuration violates a cross-field constraint" } },
+        { "const": "cfg.limit_widened", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cfg.limit_widened", "x-text": { "vi": "Cấu hình nới giới hạn an toàn hay giới hạn của ứng dụng", "en": "Configuration widens a safety or application limit" } },
+        { "const": "cfg.save_failed", "x-kind": "error", "x-http-status": 500, "x-i18n-key": "cfg.save_failed", "x-text": { "vi": "Không lưu được cấu hình trạm", "en": "Station configuration could not be saved" } },
+        { "const": "cfg.load.corrupt", "x-kind": "error", "x-i18n-key": "cfg.load.corrupt", "x-text": { "vi": "File cấu hình trạm hỏng, đang chạy với giá trị mặc định", "en": "Station configuration file corrupt, running on defaults" } },
+        { "const": "cfg.load.newer_schema", "x-kind": "error", "x-i18n-key": "cfg.load.newer_schema", "x-text": { "vi": "File cấu hình trạm có phiên bản schema mới hơn, đang chạy với giá trị mặc định", "en": "Station configuration has a newer schema version, running on defaults" } },
+        { "const": "cfg.import.bundle_unsupported", "x-kind": "error", "x-http-status": 422, "x-i18n-key": "cfg.import.bundle_unsupported", "x-text": { "vi": "Bundle cấu hình sai loại, phiên bản hoặc tên nhóm", "en": "Configuration bundle kind, version or group name not supported" } },
+        { "const": "cfg.import.serviceable_dropped", "x-kind": "error", "x-http-status": 409, "x-i18n-key": "cfg.import.serviceable_dropped", "x-text": { "vi": "Nhập cấu hình làm giảm số bay phục vụ được, đã khôi phục cấu hình trước", "en": "Import reduced the serviceable bays, previous configuration restored" } },
+        { "const": "cfg.import.checksum_mismatch", "x-kind": "warning", "x-i18n-key": "cfg.import.checksum_mismatch", "x-text": { "vi": "Checksum của bundle cấu hình không khớp", "en": "Configuration bundle checksum mismatch" } },
+        { "const": "cfg.cameras.default_used", "x-kind": "warning", "x-i18n-key": "cfg.cameras.default_used", "x-text": { "vi": "Cấu hình trạm thiếu camera cổ tay, đang dùng danh sách camera mặc định", "en": "Station configuration lacks a wrist camera, using the default camera list" } }
+      ]
+    },
+    "ota": {
+      "title": "Cập nhật",
+      "description": "Cập nhật OTA (REQ-OTA-003, REQ-OTA-007, REQ-OTA-011, REQ-OTA-014, REQ-OTA-016, REQ-OTA-020).",
+      "oneOf": [
+        { "const": "ota.refused.not_stowed", "x-kind": "error", "x-i18n-key": "ota.refused.not_stowed", "x-text": { "vi": "Tay máy chưa ở tư thế cất", "en": "Arm not in the stow pose" } },
+        { "const": "ota.refused.not_safe_hold", "x-kind": "error", "x-i18n-key": "ota.refused.not_safe_hold", "x-text": { "vi": "Máy chưa ở SAFE_HOLD", "en": "Machine not in SAFE_HOLD" } },
+        { "const": "ota.refused.charging", "x-kind": "error", "x-i18n-key": "ota.refused.charging", "x-text": { "vi": "Đang có phiên sạc hoặc đầu sạc có thể còn trong cổng", "en": "A charging session is active or the connector may be in the inlet" } },
+        { "const": "ota.refused.commands_pending", "x-kind": "error", "x-i18n-key": "ota.refused.commands_pending", "x-text": { "vi": "Còn lệnh đang chờ", "en": "Commands still pending" } },
+        { "const": "ota.manifest.signature_invalid", "x-kind": "error", "x-i18n-key": "ota.manifest.signature_invalid", "x-text": { "vi": "Chữ ký của release manifest không hợp lệ", "en": "Release manifest signature invalid" } },
+        { "const": "ota.manifest.schema_invalid", "x-kind": "error", "x-i18n-key": "ota.manifest.schema_invalid", "x-text": { "vi": "Release manifest không đúng schema", "en": "Release manifest does not match the schema" } },
+        { "const": "ota.manifest.developer_mode_off", "x-kind": "error", "x-i18n-key": "ota.manifest.developer_mode_off", "x-text": { "vi": "Manifest ký bằng khoá của chủ thiết bị khi chế độ developer đang tắt", "en": "Manifest signed with the owner's key while developer mode is off" } },
+        { "const": "ota.os_too_old", "x-kind": "error", "x-i18n-key": "ota.os_too_old", "x-text": { "vi": "Hệ điều hành cũ hơn phiên bản tối thiểu của bản phát hành", "en": "Operating system older than the release minimum" } },
+        { "const": "ota.rolled_back", "x-kind": "error", "x-i18n-key": "ota.rolled_back", "x-text": { "vi": "Kiểm sức khoẻ sau cập nhật không đạt, đã quay lại bản trước", "en": "Post-update health check failed, rolled back" } },
+        { "const": "ota.checklist_pending", "x-kind": "warning", "x-i18n-key": "ota.checklist_pending", "x-text": { "vi": "Chờ xác nhận checklist kiểm tra rút gọn sau cập nhật", "en": "Awaiting confirmation of the post-update short checklist" } }
+      ]
+    }
+  }
+}
