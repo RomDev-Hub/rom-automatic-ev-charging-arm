@@ -95,6 +95,10 @@ class CoreRuntime:
             self._loop.cancel()
             await asyncio.gather(self._loop, return_exceptions=True)
 
+    def request_stop(self) -> None:
+        """The operator's Stop: the arm stops at once, then SAFE_STOP (REQ-MIS-066)."""
+        self._announce(self.supervisor.request_stop())
+
     def failing_health_checks(self) -> list[HealthCheck]:
         """Health checks failing now, in a fixed order (REQ-GW-023)."""
         last_tick_s = self._last_tick_s

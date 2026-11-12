@@ -8,13 +8,24 @@ import json
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from robot_core.mission.machine import Transition
 
 SPEC_VERSION = "1.0"
 TYPE_PREFIX = "io.github.romdev-hub.ev-arm."
 PHASE_CHANGED = TYPE_PREFIX + "phase.changed"
+COMMAND_LIFECYCLE = TYPE_PREFIX + "command.lifecycle"
 SUBSCRIPTION_CAPACITY = 64
+
+
+class CommandState(StrEnum):
+    """Lifecycle states of a REST command that the core announces."""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    COMPLETED = "completed"
 
 
 class Subscription:
@@ -70,6 +81,26 @@ class EventHub:
                 "expected_next": transition.expected_next,
             },
         )
+
+    def publish_command(
+        self,
+        command_id: str,
+        command: str,
+        state: CommandState,
+        code: str | None = None,
+    ) -> None:
+        """Announce a step in the lifecycle of a REST command (REQ-GW-007).
+
+        `code` is the result or problem code that ends the lifecycle.
+        """
+        data: dict[str, object] = {
+            "command_id": command_id,
+            "command": command,
+            "state": state,
+        }
+        if code is not None:
+            data |= {"code": code, "params": {}}
+        self._publish(COMMAND_LIFECYCLE, data)
 
     def _publish(self, event_type: str, data: Mapping[str, object]) -> None:
         self._sequence += 1

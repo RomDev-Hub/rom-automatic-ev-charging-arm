@@ -30,6 +30,7 @@ class ProblemCode(StrEnum):
     INTERNAL = "err.internal"
     NOT_READY = "err.not_ready"
     BAD_PARAMS = "cmd.bad_params"
+    UNKNOWN_COMMAND = "cmd.unknown"
 
 
 _STATUS_AND_TITLE: Mapping[ProblemCode, tuple[int, str]] = MappingProxyType(
@@ -43,6 +44,7 @@ _STATUS_AND_TITLE: Mapping[ProblemCode, tuple[int, str]] = MappingProxyType(
             422,
             "Command parameters missing, mistyped or out of range",
         ),
+        ProblemCode.UNKNOWN_COMMAND: (404, "Command not defined in the contract"),
     }
 )
 

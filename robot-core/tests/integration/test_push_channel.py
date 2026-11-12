@@ -1,4 +1,4 @@
-"""Push channel /api/ws: handshake by session cookie, phase changes in sequence."""
+"""Push channel /api/ws: session handshake, phase changes, command lifecycles."""
 
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -90,6 +90,117 @@ def test_phase_changes_are_pushed_as_they_happen_in_sequence(
         "params": {"cause": "port.disconnected"},
         "expected_next": "S0_IDLE",
     }
+
+
+def test_stop_answers_its_command_id_and_the_lifecycle_follows_on_the_channel(
+    client, credentials, evidence
+) -> None:
+    """REQ-GW-007, REQ-GW-013, REQ-MIS-066: accepted, SAFE_STOP, then completed."""
+    client.post("/api/session", json=credentials)
+
+    with client.websocket_connect(PUSH_URL) as websocket:
+        evidence.update(EVERY_CHECK_PASSES)
+        assert receive(websocket)["data"]["phase"] == "S0_IDLE"
+        response = client.post("/api/commands/stop")
+        messages = [receive(websocket) for _ in range(4)]
+
+    assert response.status_code == 200
+    result = response.json()
+    command_id = result.pop("command_id")
+    assert result == {
+        "command": "stop",
+        "code": "cmd.stop.engaged",
+        "params": {},
+        "phase": "SAFE_STOP",
+    }
+    lifecycle = {"command_id": command_id, "command": "stop"}
+    assert [message["data"] for message in messages] == [
+        {**lifecycle, "state": "pending"},
+        {**lifecycle, "state": "accepted"},
+        {
+            "previous": "S0_IDLE",
+            "phase": "SAFE_STOP",
+            "code": "fsm.safe_stop.stop_command",
+            "params": {},
+            "expected_next": "S0_IDLE",
+        },
+        {**lifecycle, "state": "completed", "code": "cmd.stop.engaged", "params": {}},
+    ]
+    assert [message["type"].rsplit(".", 2)[-2] for message in messages] == [
+        "command",
+        "command",
+        "phase",
+        "command",
+    ]
+    sequences = [int(message["sequence"]) for message in messages]
+    assert sequences == list(range(sequences[0], sequences[0] + 4))
+
+
+def test_stop_in_safe_stop_completes_without_a_phase_change(
+    client, credentials
+) -> None:
+    """REQ-MIS-066: a second Stop stops again and completes, with no phase change."""
+    client.post("/api/session", json=credentials)
+
+    with client.websocket_connect(PUSH_URL) as websocket:
+        client.post("/api/commands/stop")
+        first = [receive(websocket) for _ in range(4)]
+        response = client.post("/api/commands/stop")
+        second = [receive(websocket)["data"] for _ in range(3)]
+
+    assert first[2]["data"]["phase"] == "SAFE_STOP"
+    assert response.json()["phase"] == "SAFE_STOP"
+    assert [data["state"] for data in second] == ["pending", "accepted", "completed"]
+    assert second[2]["code"] == "cmd.stop.engaged"
+
+
+def test_command_failing_inside_answers_500_and_is_rejected_on_the_channel(
+    client, credentials, runtime, monkeypatch, caplog
+) -> None:
+    """REQ-GW-015: internal error, never `cmd.bad_params`; logged with traceback."""
+
+    def failing_stop() -> None:
+        raise RuntimeError("supervisor unavailable")
+
+    monkeypatch.setattr(runtime, "request_stop", failing_stop)
+    client.post("/api/session", json=credentials)
+
+    with client.websocket_connect(PUSH_URL) as websocket:
+        response = client.post("/api/commands/stop")
+        messages = [receive(websocket) for _ in range(3)]
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "err.internal"
+    [pending, accepted, rejected] = [message["data"] for message in messages]
+    assert (pending["state"], accepted["state"]) == ("pending", "accepted")
+    assert rejected == {
+        "command_id": pending["command_id"],
+        "command": "stop",
+        "state": "rejected",
+        "code": "err.internal",
+        "params": {},
+    }
+    [record] = [r for r in caplog.records if r.name == "robot_core.gateway.commands"]
+    assert record.exc_info is not None
+
+
+def test_stop_needs_a_session(client) -> None:
+    """REQ-AUTH-006: no session, no command."""
+    response = client.post("/api/commands/stop")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "err.auth.required"
+
+
+def test_command_outside_the_contract_is_refused(client, credentials) -> None:
+    """REQ-GW-012: `cmd.unknown`, so a client tells it from a refused command."""
+    client.post("/api/session", json=credentials)
+
+    response = client.post("/api/commands/self_destruct")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "cmd.unknown"
+    assert response.json()["params"] == {"command": "self_destruct"}
 
 
 def test_a_message_from_the_client_closes_the_channel(client, credentials) -> None:

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from robot_core.gateway.accounts import AccountStore
+from robot_core.gateway.commands import command_routes
 from robot_core.gateway.health import health_routes
 from robot_core.gateway.problems import install_problem_handlers, problem_schemas
 from robot_core.gateway.runtime import CoreRuntime
@@ -64,4 +65,5 @@ def create_app(
     accounts = AccountStore.in_config_dir(settings.config_dir)
     app.include_router(session_routes(accounts, sessions))
     app.include_router(push_routes(core.events, sessions))
+    app.include_router(command_routes(core, sessions))
     return app
