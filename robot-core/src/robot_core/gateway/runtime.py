@@ -12,12 +12,14 @@ from robot_core.adapters.sim.arm import SimArm
 from robot_core.arm.kinematics import Kinematics, KinematicsUnavailableError
 from robot_core.arm.model import load_preset
 from robot_core.gateway.events import EventHub
+from robot_core.gateway.telemetry import TelemetryData, build_snapshot
 from robot_core.mission.machine import ChecklistItem, MissionMachine, Transition
 from robot_core.mission.supervisor import Supervisor
 
 logger = logging.getLogger(__name__)
 
 SUPERVISION_PERIOD_S = 0.033  # REQ-MIS-008
+TELEMETRY_PERIOD_S = 0.040  # REQ-GW-016
 LATE_WARNING_PERIODS = 3  # REQ-MIS-008
 TICK_MAX_AGE_S = 1.0  # REQ-GW-023
 ARM_MODEL = "ur10e"
@@ -43,10 +45,12 @@ class CoreRuntime:
     """Mission machine and simulated arm, ticked by the supervision loop.
 
     Building a runtime touches no device and starts no task; everything runs from
-    `start` to `stop` (REQ-GW-020). Each phase change goes out on `events`.
+    `start` to `stop` (REQ-GW-020). Each phase change goes out on `events`, and so
+    does a telemetry snapshot every 40 ms.
 
     Attributes:
         run_id: Identifier of this run of robot-core (REQ-REC-013).
+        latest_telemetry: The latest snapshot pushed; None before `start`.
 
     Args:
         checklist_evidence: Checks whose sources the supervisor does not read, read
@@ -71,12 +75,17 @@ class CoreRuntime:
         self.supervisor = Supervisor(
             self.machine, self.arm, stow_position_rad=STOW_POSITION_RAD
         )
+        self.latest_telemetry: TelemetryData | None = None
         self._kinematics_loaded = False
         self._last_tick_s: float | None = None
-        self._loop: asyncio.Task[None] | None = None
+        self._latest_transition: Transition | None = None
+        self._loops: list[asyncio.Task[None]] = []
 
     async def start(self) -> None:
-        """End BOOT, tick once, then keep ticking in the background (REQ-GW-022)."""
+        """End BOOT, then tick and push telemetry, once now and on in the background.
+
+        The first tick and the first snapshot come before any request (REQ-GW-022).
+        """
         try:
             self._kinematics_probe()
             self._kinematics_loaded = True
@@ -84,16 +93,17 @@ class CoreRuntime:
             logger.warning("%s", error)
         self._announce(self.machine.complete_boot())
         self._tick()
-        self._loop = asyncio.create_task(
-            self._supervise(time.monotonic()), name="supervision-loop"
-        )
-        self._loop.add_done_callback(_report_loop_end)
+        self._publish_telemetry()
+        self._loops = [
+            _start_loop("supervision loop", SUPERVISION_PERIOD_S, self._tick),
+            _start_loop("telemetry", TELEMETRY_PERIOD_S, self._publish_telemetry),
+        ]
 
     async def stop(self) -> None:
-        """Stop the supervision loop."""
-        if self._loop is not None:
-            self._loop.cancel()
-            await asyncio.gather(self._loop, return_exceptions=True)
+        """Stop the supervision loop and the telemetry."""
+        for loop in self._loops:
+            loop.cancel()
+        await asyncio.gather(*self._loops, return_exceptions=True)
 
     def request_stop(self) -> None:
         """The operator's Stop: the arm stops at once, then SAFE_STOP (REQ-MIS-066)."""
@@ -110,29 +120,45 @@ class CoreRuntime:
         }
         return [check for check, ok in passed.items() if not ok]
 
-    async def _supervise(self, deadline_s: float) -> None:
-        """Tick on absolute deadlines; a late tick is skipped, never run late."""
-        while True:
-            deadline_s += SUPERVISION_PERIOD_S
-            late_s = time.monotonic() - deadline_s
-            if late_s > 0:
-                if late_s > LATE_WARNING_PERIODS * SUPERVISION_PERIOD_S:
-                    logger.warning("supervision loop %.0f ms late", late_s * 1000)
-                deadline_s += (
-                    late_s // SUPERVISION_PERIOD_S + 1
-                ) * SUPERVISION_PERIOD_S
-            await asyncio.sleep(deadline_s - time.monotonic())
-            self._tick()
-
     def _tick(self) -> None:
         self._announce(self.supervisor.tick(self._checklist_evidence))
         self._last_tick_s = time.monotonic()
 
+    def _publish_telemetry(self) -> None:
+        assert self._latest_transition is not None, "BOOT ends before telemetry"
+        self.latest_telemetry = build_snapshot(self.machine, self._latest_transition)
+        self.events.publish_telemetry(self.latest_telemetry.model_dump(mode="json"))
+
     def _announce(self, transition: Transition | None) -> None:
         if transition is not None:
+            self._latest_transition = transition
             self.events.publish_phase(transition)
+
+
+def _start_loop(
+    name: str, period_s: float, step: Callable[[], None]
+) -> asyncio.Task[None]:
+    loop = asyncio.create_task(_run_on_deadlines(name, period_s, step), name=name)
+    loop.add_done_callback(_report_loop_end)
+    return loop
+
+
+async def _run_on_deadlines(
+    name: str, period_s: float, step: Callable[[], None]
+) -> None:
+    """Run `step` on absolute deadlines; a late run is skipped, never run late."""
+    deadline_s = time.monotonic()
+    while True:
+        deadline_s += period_s
+        late_s = time.monotonic() - deadline_s
+        if late_s > 0:
+            if late_s > LATE_WARNING_PERIODS * period_s:
+                logger.warning("%s %.0f ms late", name, late_s * 1000)
+            deadline_s += (late_s // period_s + 1) * period_s
+        await asyncio.sleep(deadline_s - time.monotonic())
+        step()
 
 
 def _report_loop_end(loop: asyncio.Task[None]) -> None:
     if not loop.cancelled() and (error := loop.exception()) is not None:
-        logger.error("supervision loop stopped", exc_info=error)
+        logger.error("%s stopped", loop.get_name(), exc_info=error)

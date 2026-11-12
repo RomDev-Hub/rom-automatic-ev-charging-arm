@@ -16,6 +16,7 @@ SPEC_VERSION = "1.0"
 TYPE_PREFIX = "io.github.romdev-hub.ev-arm."
 PHASE_CHANGED = TYPE_PREFIX + "phase.changed"
 COMMAND_LIFECYCLE = TYPE_PREFIX + "command.lifecycle"
+TELEMETRY_SNAPSHOT = TYPE_PREFIX + "telemetry.snapshot"
 SUBSCRIPTION_CAPACITY = 64
 
 
@@ -101,6 +102,10 @@ class EventHub:
         if code is not None:
             data |= {"code": code, "params": {}}
         self._publish(COMMAND_LIFECYCLE, data)
+
+    def publish_telemetry(self, data: Mapping[str, object]) -> None:
+        """Push one telemetry snapshot (REQ-GW-016)."""
+        self._publish(TELEMETRY_SNAPSHOT, data)
 
     def _publish(self, event_type: str, data: Mapping[str, object]) -> None:
         self._sequence += 1

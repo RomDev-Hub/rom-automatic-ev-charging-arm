@@ -183,10 +183,72 @@
           }
         ]
       }
+    },
+    "/api/telemetry": {
+      "get": {
+        "summary": "Read Telemetry",
+        "description": "The latest telemetry snapshot, as pushed on /api/ws (REQ-GW-019).",
+        "operationId": "read_telemetry_api_telemetry_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`err.auth.required`: Not signed in or the session has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`err.not_ready`: System not ready",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "BlockUnavailable": {
+        "properties": {
+          "unavailable": {
+            "type": "boolean",
+            "const": true,
+            "title": "Unavailable",
+            "default": true
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "default": "err.telemetry.block_unavailable"
+          }
+        },
+        "type": "object",
+        "title": "BlockUnavailable",
+        "description": "A block that could not be built (REQ-GW-017)."
+      },
       "CommandResult": {
         "properties": {
           "command_id": {
@@ -271,6 +333,65 @@
         "title": "Phase",
         "description": "Phases of the mission state machine, named as in contracts/asyncapi.yaml."
       },
+      "PhaseBlock": {
+        "properties": {
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "expected_next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Phase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "since_s": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Since S",
+            "description": "Time in the current phase (s), on the monotonic clock."
+          },
+          "note": {
+            "$ref": "#/components/schemas/PhaseNote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "previous",
+          "expected_next",
+          "since_s",
+          "note"
+        ],
+        "title": "PhaseBlock",
+        "description": "Current phase and the latest phase change (REQ-MIS-004)."
+      },
+      "PhaseNote": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "params"
+        ],
+        "title": "PhaseNote",
+        "description": "Reason code and parameters of the latest phase change."
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -302,6 +423,76 @@
         ],
         "title": "SessionInfo",
         "description": "The account of the session, without any secret (REQ-AUTH-008)."
+      },
+      "TelemetryData": {
+        "properties": {
+          "data_origin": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "simulated"
+            ],
+            "title": "Data Origin"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseBlock"
+              },
+              {
+                "$ref": "#/components/schemas/BlockUnavailable"
+              }
+            ],
+            "title": "Phase"
+          },
+          "safe_hold": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "supervision": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "session": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "lot": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "motion": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "devices": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "perception": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "sim_faults": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "health": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "build": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_origin",
+          "phase",
+          "safe_hold",
+          "supervision",
+          "session",
+          "lot",
+          "motion",
+          "devices",
+          "perception",
+          "sim_faults",
+          "health",
+          "build"
+        ],
+        "title": "TelemetryData",
+        "description": "One telemetry snapshot (REQ-GW-016), alike on /api/ws and over REST."
       },
       "ProblemCode": {
         "description": "Catalogue codes the gateway answers with.",

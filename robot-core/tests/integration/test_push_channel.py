@@ -1,6 +1,7 @@
-"""Push channel /api/ws: session handshake, phase changes, command lifecycles."""
+"""Push channel /api/ws: handshake, phase changes, command lifecycles, telemetry."""
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -13,6 +14,7 @@ from robot_core.mission.machine import ChecklistItem
 PUSH_URL = "wss://testserver/api/ws"
 RECEIVE_TIMEOUT_S = 5.0
 EVERY_CHECK_PASSES = dict.fromkeys(ChecklistItem, True)
+TELEMETRY = "io.github.romdev-hub.ev-arm.telemetry.snapshot"
 
 
 def receive(websocket) -> dict:
@@ -22,6 +24,14 @@ def receive(websocket) -> dict:
         return reader.submit(websocket.receive_json).result(RECEIVE_TIMEOUT_S)
     finally:
         reader.shutdown(wait=False)
+
+
+def next_message(websocket, *, telemetry: bool = False) -> dict:
+    """Next telemetry snapshot, or else next other message, within the deadline."""
+    deadline_s = time.monotonic() + RECEIVE_TIMEOUT_S
+    while ((message := receive(websocket))["type"] == TELEMETRY) is not telemetry:
+        assert time.monotonic() < deadline_s, "no such message before the deadline"
+    return message
 
 
 @pytest.fixture
@@ -63,17 +73,19 @@ def test_phase_changes_are_pushed_as_they_happen_in_sequence(
 
     with client.websocket_connect(PUSH_URL) as websocket:
         evidence.update(EVERY_CHECK_PASSES)
-        idle = receive(websocket)
+        idle = next_message(websocket)
         runtime.arm.simulate_disconnect()
-        hold = receive(websocket)
+        hold = next_message(websocket)
 
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", idle.pop("time"))
     assert idle.pop("id") != hold.pop("id")
+    # Telemetry takes numbers in between, so only the order is fixed.
+    assert re.fullmatch(r"\d{20}", idle_sequence := idle.pop("sequence"))
+    assert hold["sequence"] > idle_sequence
     assert idle == {
         "specversion": "1.0",
         "source": f"/core/{runtime.run_id}",
         "type": "io.github.romdev-hub.ev-arm.phase.changed",
-        "sequence": "00000000000000000002",  # BOOT to SAFE_HOLD was the first
         "data": {
             "previous": "SAFE_HOLD",
             "phase": "S0_IDLE",
@@ -82,7 +94,6 @@ def test_phase_changes_are_pushed_as_they_happen_in_sequence(
             "expected_next": None,
         },
     }
-    assert hold["sequence"] == "00000000000000000003"
     assert hold["data"] == {
         "previous": "S0_IDLE",
         "phase": "SAFE_HOLD",
@@ -100,9 +111,9 @@ def test_stop_answers_its_command_id_and_the_lifecycle_follows_on_the_channel(
 
     with client.websocket_connect(PUSH_URL) as websocket:
         evidence.update(EVERY_CHECK_PASSES)
-        assert receive(websocket)["data"]["phase"] == "S0_IDLE"
+        assert next_message(websocket)["data"]["phase"] == "S0_IDLE"
         response = client.post("/api/commands/stop")
-        messages = [receive(websocket) for _ in range(4)]
+        messages = [next_message(websocket) for _ in range(4)]
 
     assert response.status_code == 200
     result = response.json()
@@ -144,9 +155,9 @@ def test_stop_in_safe_stop_completes_without_a_phase_change(
 
     with client.websocket_connect(PUSH_URL) as websocket:
         client.post("/api/commands/stop")
-        first = [receive(websocket) for _ in range(4)]
+        first = [next_message(websocket) for _ in range(4)]
         response = client.post("/api/commands/stop")
-        second = [receive(websocket)["data"] for _ in range(3)]
+        second = [next_message(websocket)["data"] for _ in range(3)]
 
     assert first[2]["data"]["phase"] == "SAFE_STOP"
     assert response.json()["phase"] == "SAFE_STOP"
@@ -167,7 +178,7 @@ def test_command_failing_inside_answers_500_and_is_rejected_on_the_channel(
 
     with client.websocket_connect(PUSH_URL) as websocket:
         response = client.post("/api/commands/stop")
-        messages = [receive(websocket) for _ in range(3)]
+        messages = [next_message(websocket) for _ in range(3)]
 
     assert response.status_code == 500
     assert response.json()["code"] == "err.internal"
@@ -184,12 +195,68 @@ def test_command_failing_inside_answers_500_and_is_rejected_on_the_channel(
     assert record.exc_info is not None
 
 
-def test_stop_needs_a_session(client) -> None:
-    """REQ-AUTH-006: no session, no command."""
-    response = client.post("/api/commands/stop")
+@pytest.mark.parametrize(
+    ("method", "path"), [("POST", "/api/commands/stop"), ("GET", "/api/telemetry")]
+)
+def test_command_and_snapshot_need_a_session(client, method, path) -> None:
+    """REQ-AUTH-006: no session, no command and no telemetry snapshot."""
+    response = client.request(method, path)
 
     assert response.status_code == 401
     assert response.json()["code"] == "err.auth.required"
+
+
+def test_late_client_learns_the_phase_from_telemetry_within_a_second(
+    client, credentials
+) -> None:
+    """REQ-GW-016, REQ-GW-017, REQ-MIS-004: the live phase block, others unavailable."""
+    client.post("/api/session", json=credentials)
+    client.post("/api/commands/stop")
+
+    connecting_s = time.monotonic()
+    with client.websocket_connect(PUSH_URL) as websocket:
+        data = next_message(websocket, telemetry=True)["data"]
+    waited_s = time.monotonic() - connecting_s
+
+    assert waited_s < 1.0
+    assert data.pop("data_origin") == "simulated"
+    phase = data.pop("phase")
+    assert phase.pop("since_s") >= 0
+    assert phase == {
+        "phase": "SAFE_STOP",
+        "previous": "SAFE_HOLD",
+        "expected_next": "SAFE_HOLD",
+        "note": {"code": "fsm.safe_stop.stop_command", "params": {}},
+    }
+    unavailable = {"unavailable": True, "code": "err.telemetry.block_unavailable"}
+    assert data == {
+        "safe_hold": unavailable,
+        "supervision": unavailable,
+        "session": unavailable,
+        "lot": unavailable,
+        "motion": unavailable,
+        "devices": unavailable,
+        "perception": unavailable,
+        "sim_faults": unavailable,
+        "health": unavailable,
+        "build": unavailable,
+    }
+
+
+def test_snapshot_route_answers_the_telemetry_data_pushed_on_the_channel(
+    client, credentials
+) -> None:
+    """REQ-GW-019: the REST snapshot has the schema of the pushed telemetry data."""
+    client.post("/api/session", json=credentials)
+
+    with client.websocket_connect(PUSH_URL) as websocket:
+        pushed = next_message(websocket, telemetry=True)["data"]
+        response = client.get("/api/telemetry")
+
+    assert response.status_code == 200
+    fetched = response.json()
+    assert fetched["phase"].pop("since_s") >= pushed["phase"].pop("since_s")
+    assert fetched == pushed
 
 
 def test_command_outside_the_contract_is_refused(client, credentials) -> None:
@@ -210,6 +277,6 @@ def test_a_message_from_the_client_closes_the_channel(client, credentials) -> No
     with client.websocket_connect(PUSH_URL) as websocket:
         websocket.send_json({"command": "stop"})
         with pytest.raises(WebSocketDisconnect) as closed:
-            receive(websocket)
+            next_message(websocket)
 
     assert closed.value.code == 1008

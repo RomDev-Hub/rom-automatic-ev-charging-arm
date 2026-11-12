@@ -14,6 +14,7 @@ from robot_core.gateway.runtime import CoreRuntime
 from robot_core.gateway.sessions import SessionStore, session_routes
 from robot_core.gateway.settings import Settings
 from robot_core.gateway.stream import push_routes
+from robot_core.gateway.telemetry import telemetry_routes
 
 API_TITLE = "robot-core REST API"
 # Version of the REST contract, not of the software; a draft until it is agreed.
@@ -66,4 +67,5 @@ def create_app(
     app.include_router(session_routes(accounts, sessions))
     app.include_router(push_routes(core.events, sessions))
     app.include_router(command_routes(core, sessions))
+    app.include_router(telemetry_routes(lambda: core.latest_telemetry, sessions))
     return app
