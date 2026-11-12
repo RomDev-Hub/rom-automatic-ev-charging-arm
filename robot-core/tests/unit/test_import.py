@@ -1,4 +1,4 @@
-"""Importing robot_core leaves the process and the machine as it found them."""
+"""Importing robot_core, or building the gateway app, leaves the machine as it was."""
 
 import contextlib
 import importlib
@@ -7,7 +7,7 @@ import logging
 import os
 import subprocess
 import sys
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Callable, Iterator, MutableMapping
 from typing import Any
 from unittest import mock
 
@@ -76,47 +76,78 @@ class SideEffectBlocked(BaseException):
     """Stops a side effect; not an Exception, so `except Exception` cannot hide it."""
 
 
-def import_side_effects() -> list[str]:
-    """Import robot_core in this interpreter and describe every side effect."""
-    side_effects: list[str] = []
-    importing = True
+def side_effects(action: Callable[[], object], *, strict: bool) -> list[str]:
+    """Run `action` in this interpreter and describe every side effect.
+
+    Strict also counts environment access and logging configuration.
+    """
+    found: list[str] = []
+    watching = True
 
     def block(event: str, args: tuple[Any, ...]) -> None:
-        if importing and is_side_effect(event, args):
-            side_effects.append(f"{event}: {args!r}")
+        if watching and is_side_effect(event, args):
+            found.append(f"{event}: {args!r}")
             raise SideEffectBlocked(event)
 
     sys.addaudithook(block)
     logging_before = logging_state()
-    environ = RecordingEnviron(os.environ, side_effects)
-    with (
-        contextlib.suppress(SideEffectBlocked),
-        mock.patch.object(os, "environ", environ),
-    ):
-        importlib.import_module("robot_core")
-    importing = False
-    unconfigured = (logging.NOTSET, 0)
-    side_effects += [
-        f"logging configured: {name or 'root'}"
-        for name, state in logging_state().items()
-        if state != logging_before.get(name, unconfigured)
-    ]
-    return side_effects
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(contextlib.suppress(SideEffectBlocked))
+        if strict:
+            environ = RecordingEnviron(os.environ, found)
+            stack.enter_context(mock.patch.object(os, "environ", environ))
+        action()
+    watching = False
+    if strict:
+        unconfigured = (logging.NOTSET, 0)
+        found += [
+            f"logging configured: {name or 'root'}"
+            for name, state in logging_state().items()
+            if state != logging_before.get(name, unconfigured)
+        ]
+    return found
 
 
-def test_import_has_no_side_effects() -> None:
+def import_package() -> None:
+    importlib.import_module("robot_core")
+
+
+def build_gateway_app() -> None:
+    importlib.import_module("robot_core.gateway.app").create_app()
+
+
+ACTIONS = {
+    "import": (import_package, True),
+    "gateway": (build_gateway_app, False),
+}
+
+
+def side_effects_in_child(action: str) -> list[str]:
     # -I: ignore PYTHON* variables and keep the working directory off sys.path.
     # -B: write no bytecode cache, which the audit hook would report as a write.
     child = subprocess.run(
-        [sys.executable, "-I", "-B", __file__],
+        [sys.executable, "-I", "-B", __file__, action],
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
     )
     assert child.returncode == 0, child.stderr
-    assert json.loads(child.stdout) == []
+    return json.loads(child.stdout)
+
+
+def test_import_has_no_side_effects() -> None:
+    assert side_effects_in_child("import") == []
+
+
+def test_gateway_app_factory_writes_no_file_and_starts_no_thread() -> None:
+    """REQ-GW-020: importing the gateway and building its app start nothing.
+
+    No file is written, no socket opened and no thread started.
+    """
+    assert side_effects_in_child("gateway") == []
 
 
 if __name__ == "__main__":
-    print(json.dumps(import_side_effects()))
+    action, strict = ACTIONS[sys.argv[1]]
+    print(json.dumps(side_effects(action, strict=strict)))

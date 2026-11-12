@@ -61,6 +61,11 @@ class Supervisor:
         self._arm.stop()
         return self._machine.apply_stop_command()
 
+    def arm_data_fault(self) -> PortCode | None:
+        """Code telling why the arm data cannot be trusted now; None when it can."""
+        arm = self._read_arm()
+        return arm if isinstance(arm, PortCode) else None
+
     def _snapshot(self, evidence: Mapping[ChecklistItem, bool | None]) -> Snapshot:
         arm = self._read_arm()
         if isinstance(arm, PortCode):
