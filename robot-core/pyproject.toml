@@ -1,0 +1,43 @@
+[project]
+name = "robot-core"
+dynamic = ["version"]
+requires-python = ">=3.14"
+license = "AGPL-3.0-or-later"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "mypy>=2.4.1",
+  "pytest>=9.2.0",
+  "ruff>=0.17.4",
+]
+
+[build-system]
+requires = ["hatchling>=1.33.0", "hatch-vcs>=0.5.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+# Gốc repo Git là thư mục cha của robot-core; phiên bản lấy từ tag vX.Y.Z gần nhất.
+# dist_name: build trong Docker đặt phiên bản bằng SETUPTOOLS_SCM_PRETEND_VERSION_FOR_ROBOT_CORE, không ảnh hưởng gói khác cũng dùng setuptools-scm như ur_rtde.
+raw-options = { root = "..", dist_name = "robot-core" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/robot_core"]
+
+[tool.uv]
+# Phiên bản lấy từ Git, nên mỗi commit hoặc tag mới thì cài lại project để metadata đúng phiên bản.
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+
+[tool.ruff]
+line-length = 88
+
+[tool.mypy]
+files = ["src"]
+strict = true
+
+[tool.pytest]
+testpaths = ["tests"]
+# Chế độ importlib cho phép hai file test trùng tên ở hai thư mục khác nhau mà không cần __init__.py.
+addopts = ["--import-mode=importlib"]
+strict = true
