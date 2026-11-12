@@ -1,4 +1,4 @@
-"""Recording of phase changes and arm samples into an MCAP file of the run.
+"""Recording of phase changes and arm samples into a size-capped MCAP file of the run.
 
 mcap.writer is imported when a file is opened, not when this module is imported: the
 zstd codec it loads reads the environment at import, and importing robot_core stays
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 RECORDINGS_DIR_VARIABLE = "EV_ARM_RECORDINGS_DIR"
 DEFAULT_RECORDINGS_DIR = Path("/var/lib/ev-arm/recordings")
+DEFAULT_MAX_FILE_BYTES = 200_000_000
+CHUNK_BYTES = 1024 * 1024
 NS_PER_S = 1_000_000_000
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ class RecordingCode(StrEnum):
 
     OPEN_FAILED = "rec.open_failed"
     WRITE_FAILED = "rec.write_failed"
+    FILE_FULL = "rec.file_full"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -105,6 +108,10 @@ class Recorder:
     arm sample, moved from the host monotonic clock onto the wall clock, or `log_time`
     for a phase change, which has no time of its own (REQ-REC-006).
 
+    Once the file's size reaches `max_file_bytes`, the file is finished and closed and
+    recording stops with a coded fault (REQ-REC-010); the file ends past the cap by at
+    most one chunk and its summary.
+
     A file that cannot be created or written stops the recording with a coded fault in
     `status` and a log line; no file-system error reaches the caller.
 
@@ -116,6 +123,7 @@ class Recorder:
         run_id: str,
         *,
         directory: Path | None = None,
+        max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
         wall_clock_ns: Callable[[], int] = time.time_ns,
         monotonic_s: Callable[[], float] = time.monotonic,
         create_file: Callable[[Path], BinaryIO] = _create_file,
@@ -126,6 +134,9 @@ class Recorder:
         """
         self._run_id = run_id
         self._directory = recordings_dir() if directory is None else directory
+        self._max_file_bytes = max_file_bytes
+        # A file passes its cap by up to one chunk, so a chunk is at most an eighth of it.
+        self._chunk_bytes = min(CHUNK_BYTES, max_file_bytes // 8)
         self._wall_clock_ns = wall_clock_ns
         self._monotonic_s = monotonic_s
         self._create_file = create_file
@@ -161,16 +172,7 @@ class Recorder:
 
     def close(self) -> None:
         """Write the summary and close the file; later messages are dropped."""
-        file = self._file
-        if file is None:
-            return
-        try:
-            file.writer.finish()  # type: ignore[no-untyped-call]
-            file.stream.close()
-        except OSError as error:
-            self._stop(RecordingCode.WRITE_FAILED, error)
-        else:
-            self._file = None
+        self._close_file()
 
     def _new_file_path(self) -> Path:
         start = datetime.fromtimestamp(self._wall_clock_ns() // NS_PER_S, UTC)
@@ -184,7 +186,7 @@ class Recorder:
         except OSError as error:
             self._stop(RecordingCode.OPEN_FAILED, error)
             return None
-        writer = mcap.writer.Writer(stream)
+        writer = mcap.writer.Writer(stream, chunk_size=self._chunk_bytes)
         writer.start()
         channel_ids = {}
         for channel in CHANNELS:
@@ -197,6 +199,20 @@ class Recorder:
                 channel.topic, MessageEncoding.JSON, schema_id
             )
         return _OpenFile(stream, writer, channel_ids)
+
+    def _close_file(self) -> bool:
+        """Finish and close the open file; False when none is open or closing fails."""
+        file = self._file
+        if file is None:
+            return False
+        try:
+            file.writer.finish()  # type: ignore[no-untyped-call]
+            file.stream.close()
+        except OSError as error:
+            self._stop(RecordingCode.WRITE_FAILED, error)
+            return False
+        self._file = None
+        return True
 
     def _write(
         self,
@@ -216,20 +232,31 @@ class Recorder:
                 data=message,
                 publish_time=publish_time_ns,
             )
+            full = file.stream.tell() >= self._max_file_bytes
         except OSError as error:
             self._messages_dropped += 1
             self._stop(RecordingCode.WRITE_FAILED, error)
-        else:
-            self._messages_written += 1
+            return
+        self._messages_written += 1
+        if full and self._close_file():
+            self._keep_fault(
+                RecordingCode.FILE_FULL,
+                {"limit_bytes": self._max_file_bytes},
+                f"the file reached {self._max_file_bytes} bytes",
+            )
 
     def _stop(self, code: RecordingCode, error: OSError) -> None:
-        """Release the file and keep the fault; the caller carries on."""
+        """Release the file after a file-system error and keep the fault."""
         if self._file is not None:
             with contextlib.suppress(OSError):
                 self._file.stream.close()
             self._file = None
         cause = errno.errorcode.get(error.errno or 0, type(error).__name__)
+        self._keep_fault(code, {"cause": cause}, error)
+
+    def _keep_fault(self, code: RecordingCode, params: Params, detail: object) -> None:
+        """Keep why recording stopped, with the file's path, and log it once."""
         self._fault = RecordingFault(
-            code=code, params={"path": str(self._path), "cause": cause}
+            code=code, params={"path": str(self._path), **params}
         )
-        logger.warning("Recording stopped with %s: %s", code, error)
+        logger.warning("Recording of %s stopped with %s: %s", self._path, code, detail)

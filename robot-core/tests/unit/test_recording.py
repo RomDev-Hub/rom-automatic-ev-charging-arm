@@ -296,6 +296,49 @@ def test_non_finite_numbers_are_recorded_as_null(clock, tmp_path: Path) -> None:
     ]
 
 
+def test_file_reaching_the_size_cap_is_closed_whole_and_recording_stops(
+    clock, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """REQ-REC-005, REQ-REC-010: the run's one file closes whole at its cap."""
+    cap_bytes = 16_384
+    recorder = open_recorder(clock, tmp_path, max_file_bytes=cap_bytes)
+    sent = 0
+    while recorder.status.active and sent < 100_000:
+        recorder.record_arm_state(
+            ArmState(
+                joint_position_rad=STOW_RAD,
+                joint_velocity_rad_s=(float(sent),) * len(STOW_RAD),
+                measured_at_s=clock(),
+                progress=None,
+            )
+        )
+        sent += 1
+    recorder.record_transition(HOLD_ON_STALE_DATA)
+    recorder.record_arm_state(stowed_sample(clock))
+    recorder.close()
+
+    path = tmp_path / FILE_NAME
+    assert list(tmp_path.iterdir()) == [path]
+    assert cap_bytes <= path.stat().st_size < cap_bytes * 3 // 2
+    assert [
+        message["joint_velocity_rad_s"][0] for *_, message in read_messages(path)
+    ] == [float(number) for number in range(sent)]
+    assert recorder.status == RecorderStatus(
+        active=False,
+        path=path,
+        messages_written=sent,
+        messages_dropped=2,
+        fault=RecordingFault(
+            code="rec.file_full", params={"path": str(path), "limit_bytes": 16_384}
+        ),
+    )
+    assert [
+        (record.levelname, "rec.file_full" in record.getMessage())
+        for record in caplog.records
+        if record.name == "robot_core.recording.recorder"
+    ] == [("WARNING", True)]
+
+
 def test_read_only_directory_leaves_recording_off_with_a_coded_fault(
     clock, tmp_path: Path
 ) -> None:
