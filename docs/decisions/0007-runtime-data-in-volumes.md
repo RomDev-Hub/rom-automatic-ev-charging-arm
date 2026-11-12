@@ -46,6 +46,8 @@ Mọi container chạy với rootfs chỉ đọc và user không phải root. D�
 
 User chạy service `core` là `ev-arm`, UID 10001, GID 10001, tạo trong `deploy/docker/core.Dockerfile`. UID và GID cố định vì volume đã có dữ liệu giữ chủ sở hữu cũ (mục Hệ quả), nên image về sau đổi UID sẽ không ghi được vào volume đó; số trên 10000 để không trùng tài khoản thường của host, mà Debian và Ubuntu cấp từ 1000 trở lên.
 
+Chỗ ghi tạm duy nhất ngoài các volume là `/tmp` của từng service, một tmpfs có giới hạn dung lượng khai trong `deploy/compose.yaml` (64 MiB với `core`): nằm trong RAM và mất khi container khởi động lại, nên không giữ được dữ liệu runtime nào.
+
 Mỗi thư mục trong bảng đặt lại được bằng biến môi trường `EV_ARM_<TÊN>_DIR`, ví dụ `EV_ARM_RECORDINGS_DIR` thay cho `/var/lib/ev-arm/recordings`; biến không đặt thì dùng đường dẫn trong bảng. Khi chạy thẳng trên máy, không qua container (mức 1 trong `CONTRIBUTING.md`), nơi `/var/lib/ev-arm/` không dùng được, người phát triển đặt các biến này; robot-core không tự dò thư mục theo XDG Base Directory, để container và máy phát triển dùng chung một cơ chế.
 
 ### Hệ quả
@@ -108,9 +110,8 @@ ADR liên quan: 0008 (môi trường dev và phiên bản công cụ), 0010 (fil
 Chưa quyết định, kèm việc sẽ chốt từng điểm:
 
 - Con số giới hạn dung lượng của `ev-arm-recordings` và cách áp giới hạn: chốt khi nối bộ ghi MCAP vào vòng giám sát.
-- Thông số xoay vòng log và chỗ khai driver `local` (từng service trong Compose hay mặc định của daemon trong `deploy/host/daemon.json`): chốt khi viết `deploy/compose.production.yaml`, file triển khai cho thiết bị. Khi chưa đặt, driver dùng mặc định của Docker: 5 file, mỗi file 20 MB, có nén.
+- Thông số xoay vòng log, và có đặt thêm `local` làm driver mặc định của daemon trong `deploy/host/daemon.json` hay không: chốt khi viết `deploy/compose.production.yaml`, file triển khai cho thiết bị. `deploy/compose.yaml` đã khai driver `local` cho từng service; khi chưa đặt thông số, driver dùng mặc định của Docker: 5 file, mỗi file 20 MB, có nén.
 - UID và GID của user chạy service `hmi`: chốt khi viết `deploy/docker/hmi.Dockerfile`.
-- Chỗ ghi tạm khi rootfs chỉ đọc, ví dụ `/tmp` (Compose có thuộc tính `tmpfs` cho việc này): chốt khi viết `deploy/compose.yaml`.
 - Nơi giữ file nguồn của secret trên host, và cách lệnh `provision` của CLI đặt khoá thiết bị vào đó: chốt khi làm lệnh `provision`.
 - Chỗ đặt dữ liệu runtime của service `hmi` (Caddy), như chứng chỉ và khoá TLS; bảng trên chưa có dòng nào cho phần này: chốt khi làm TLS cho HMI.
 - Volume nào được sao lưu, lịch sao lưu và nơi giữ bản sao: chốt khi viết `scripts/volume-backup.sh` và `scripts/volume-restore.sh`.

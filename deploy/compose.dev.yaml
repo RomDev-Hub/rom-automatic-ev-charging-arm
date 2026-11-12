@@ -1,0 +1,7 @@
+# Cả stack ở mức 2 với target dev (REQ-DEP-009): stack mô phỏng, cộng nhóm dependency dev và bộ test của robot-core trong image. Ghép sau compose.sim.yaml:
+# docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml -f deploy/compose.dev.yaml up -d --build
+services:
+  core:
+    image: ev-arm-core:dev
+    build:
+      target: dev

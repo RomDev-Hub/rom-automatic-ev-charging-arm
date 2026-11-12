@@ -1,0 +1,52 @@
+# Service dùng chung cho mọi môi trường; compose.sim.yaml, compose.dev.yaml ghép thêm phần riêng (REQ-DEP-009).
+# Stack mô phỏng ở mức 2: docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml up -d --build
+name: ev-arm
+
+services:
+  core:
+    image: ghcr.io/romdev-hub/ev-arm-core
+    # Quyền tối thiểu (REQ-DEP-011, ADR 0013): rootfs chỉ đọc, user của image (ADR 0007), không capability nào, không leo quyền qua setuid.
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    # /api/health trả 200 khi vòng giám sát, port tay máy và động học cùng đạt (REQ-GW-023); image không có curl nên gọi bằng Python.
+    healthcheck:
+      test: [CMD, python, -c, 'import os, urllib.request; urllib.request.urlopen("http://127.0.0.1:%s/api/health" % os.environ.get("EV_ARM_PORT", "8000"), timeout=3)']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
+    logging:
+      driver: local
+    # Không khai ports: core không mở cổng nào ra LAN (REQ-DEP-014). Chỉ core vào mạng cell (REQ-DEP-015).
+    networks: [cell]
+    volumes:
+      - config:/var/lib/ev-arm/config
+      - state:/var/lib/ev-arm/state
+      - recordings:/var/lib/ev-arm/recordings
+      - harvest:/var/lib/ev-arm/harvest
+      - models:/var/lib/ev-arm/models
+      # Chỗ ghi tạm duy nhất ngoài volume, nằm trong RAM, có giới hạn và mất khi container khởi động lại (ADR 0007).
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 64m
+
+networks:
+  cell: {}
+
+# Năm volume dữ liệu của thiết bị, tên đúng bảng của ADR 0007 (REQ-DEP-016).
+volumes:
+  config:
+    name: ev-arm-config
+  state:
+    name: ev-arm-state
+  recordings:
+    name: ev-arm-recordings
+  harvest:
+    name: ev-arm-harvest
+  models:
+    name: ev-arm-models

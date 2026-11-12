@@ -1,0 +1,27 @@
+# Cả stack với adapter mô phỏng, trên máy không gắn thiết bị nào (mức 2; REQ-DEP-010, REQ-CLI-003). Ghép sau compose.yaml:
+# docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml up -d --build
+services:
+  core:
+    image: ev-arm-core:sim
+    build:
+      context: ..
+      dockerfile: deploy/docker/core.Dockerfile
+      target: runtime
+
+# Mạng cell của stack mô phỏng không đi ra ngoài host, nên core không chạm được thiết bị thật nào trong LAN.
+networks:
+  cell:
+    internal: true
+
+# Volume riêng của stack mô phỏng, không dùng năm volume của thiết bị (REQ-DEP-010).
+volumes:
+  config:
+    name: ev-arm-sim-config
+  state:
+    name: ev-arm-sim-state
+  recordings:
+    name: ev-arm-sim-recordings
+  harvest:
+    name: ev-arm-sim-harvest
+  models:
+    name: ev-arm-sim-models
