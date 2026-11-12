@@ -48,6 +48,7 @@ docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
 - Hook do framework pre-commit quản lý, cấu hình ở `.pre-commit-config.yaml`; repo không dùng husky. `pre-commit install` cài hook `pre-commit` và `commit-msg` vào `.git/hooks/`. Thư mục này không nằm trong Git, nên mỗi bản clone phải tự cài.
 - Hook `no-commit-to-branch` chặn commit trên `main` và `develop`; trên GitHub, ruleset của hai nhánh này chặn mọi thay đổi không qua pull request (mục "Nhánh và lịch sử"). CI chạy các hook với `SKIP=no-commit-to-branch`, vì khi CI chạy trên `main` hay `develop` thì checkout đứng ở chính nhánh đó.
 - Hook pre-commit chạy ở mỗi commit; commitlint chạy ở hook commit-msg. Trên mỗi PR và mỗi lần `main` hay `develop` đổi, CI chạy commitlint trên từng commit mới và chạy lại các hook trên toàn bộ file của commit cuối. Kiểm từng commit qua hook thì chạy `git rebase -x` như mục "Nhánh và lịch sử".
+- Với `operator-ui`, hook chạy ESLint, Prettier, kiểm kiểu và kiểm kiểu sinh từ `contracts/` còn khớp; test chạy bằng `pnpm --filter operator-ui run test`, bản build bằng `pnpm --filter operator-ui run build`. Sau khi đổi `contracts/`, sinh lại kiểu bằng `pnpm --filter operator-ui run contracts`.
 - Không dùng `--no-verify`.
 
 ## Ngôn ngữ
