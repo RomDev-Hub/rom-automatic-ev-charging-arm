@@ -6,6 +6,7 @@ import {
 } from "../features/phase/phaseView";
 import { RateMeter } from "../features/phase/rateMeter";
 import {
+  COMMAND_LIFECYCLE,
   ignoreMessage,
   openPushChannel,
   PHASE_CHANGED,
@@ -15,14 +16,26 @@ import {
   type PushEnvelope,
 } from "../features/push/pushChannel";
 import {
+  channelLost,
+  commandAnswered,
+  commandFailed,
+  commandSent,
+  EMPTY_LOG,
+  lifecycleReceived,
+  type CommandLog,
+} from "../features/stop/commandLog";
+import {
   closeSession,
+  NETWORK_ERROR,
   openSession,
   readSession,
   readTelemetry,
+  sendStop,
   SESSION_REQUIRED,
   type Credentials,
   type Notice,
 } from "../shared/api/rest";
+import type { ToastView } from "../shared/Toast";
 
 export type SessionState =
   | { status: "checking" }
@@ -34,6 +47,8 @@ export interface OperatorState {
   channel: ChannelStatus;
   phase: PhaseView;
   telemetryHz: number;
+  commands: CommandLog;
+  toast: ToastView | null;
 }
 
 /** What the HMI shows and the actions it takes; React reads it through useSyncExternalStore. */
@@ -43,12 +58,16 @@ export interface OperatorStore {
   checkSession: () => Promise<void>;
   signIn: (credentials: Credentials) => Promise<void>;
   signOut: () => Promise<void>;
+  stop: () => Promise<void>;
+  dismissToast: (id: number) => void;
 }
 
 const SIGNED_OUT = {
   channel: "closed",
   phase: UNKNOWN_PHASE,
   telemetryHz: 0,
+  commands: EMPTY_LOG,
+  toast: null,
 } as const satisfies Partial<OperatorState>;
 // The rate falls to 0 within this period once snapshots stop coming.
 const RATE_REFRESH_MS = 500;
@@ -60,6 +79,8 @@ export function createOperatorStore(): OperatorStore {
   const rate = new RateMeter();
   let channel: PushChannel | null = null;
   let rateTimer: ReturnType<typeof setInterval> | undefined;
+  let lastCommandKey = 0;
+  let lastToastId = 0;
 
   function update(next: Partial<OperatorState>) {
     state = { ...state, ...next };
@@ -86,7 +107,10 @@ export function createOperatorStore(): OperatorStore {
   function channelChanged(status: ChannelStatus) {
     update({ channel: status });
     if (status === "open") void readSnapshot();
-    if (status === "closed") void confirmSession();
+    if (status === "closed") {
+      update({ commands: channelLost(state.commands) });
+      void confirmSession();
+    }
   }
 
   // After each (re)connection the latest snapshot is read over REST (contracts/asyncapi.yaml, REQ-GW-019).
@@ -118,6 +142,7 @@ export function createOperatorStore(): OperatorStore {
   function messageReceived({ type, data }: PushEnvelope) {
     if (type === TELEMETRY_SNAPSHOT) telemetryReceived(data);
     else if (type === PHASE_CHANGED) phaseChanged(data);
+    else if (type === COMMAND_LIFECYCLE) lifecycleChanged(data);
   }
 
   function telemetryReceived(data: PushEnvelope["data"]) {
@@ -136,9 +161,20 @@ export function createOperatorStore(): OperatorStore {
     else update({ phase });
   }
 
+  function lifecycleChanged(data: PushEnvelope["data"]) {
+    const commands = lifecycleReceived(state.commands, data);
+    if (commands === null) ignoreMessage(data);
+    else update({ commands });
+  }
+
   function refreshRate() {
     const telemetryHz = rate.rateHz(performance.now());
     if (telemetryHz !== state.telemetryHz) update({ telemetryHz });
+  }
+
+  function showToast(notice: Notice) {
+    lastToastId += 1;
+    update({ toast: { id: lastToastId, notice } });
   }
 
   return {
@@ -165,6 +201,32 @@ export function createOperatorStore(): OperatorStore {
     async signOut() {
       leaveSignedIn(null);
       await closeSession();
+    },
+    // Each command result also shows as a toast built from its code and parameters (REQ-HMI-005, REQ-HMI-008).
+    async stop() {
+      lastCommandKey += 1;
+      const key = lastCommandKey;
+      update({ commands: commandSent(state.commands, key) });
+      const result = await sendStop();
+      if (result.ok) {
+        const { command_id: commandId, code, params } = result.data;
+        const commands = commandAnswered(state.commands, key, commandId);
+        // Without an open channel no lifecycle event of this command can arrive.
+        update({
+          commands: state.channel === "open" ? commands : channelLost(commands),
+        });
+        showToast({ code, params });
+      } else if (result.notice.code === SESSION_REQUIRED) {
+        leaveSignedIn(result.notice);
+      } else {
+        const status =
+          result.notice.code === NETWORK_ERROR ? "unknown" : "rejected";
+        update({ commands: commandFailed(state.commands, key, status) });
+        showToast(result.notice);
+      }
+    },
+    dismissToast(id) {
+      if (state.toast?.id === id) update({ toast: null });
     },
   };
 }

@@ -26,7 +26,7 @@ export function App({ store }: { store: OperatorStore }) {
         <OperatorShell
           state={state}
           username={session.username}
-          onSignOut={store.signOut}
+          store={store}
         />
       );
   }

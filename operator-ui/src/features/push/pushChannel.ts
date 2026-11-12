@@ -19,6 +19,8 @@ export const TELEMETRY_SNAPSHOT =
   "io.github.romdev-hub.ev-arm.telemetry.snapshot" satisfies Schemas["TelemetrySnapshot"]["type"];
 export const PHASE_CHANGED =
   "io.github.romdev-hub.ev-arm.phase.changed" satisfies Schemas["PhaseChanged"]["type"];
+export const COMMAND_LIFECYCLE =
+  "io.github.romdev-hub.ev-arm.command.lifecycle" satisfies Schemas["CommandLifecycle"]["type"];
 
 export interface PushHandlers {
   onStatus: (status: ChannelStatus) => void;
@@ -41,7 +43,7 @@ const PUSH_TYPES = {
   "io.github.romdev-hub.ev-arm.motion.blocked": true,
   "io.github.romdev-hub.ev-arm.fault.raised": true,
   "io.github.romdev-hub.ev-arm.supervision.changed": true,
-  "io.github.romdev-hub.ev-arm.command.lifecycle": true,
+  [COMMAND_LIFECYCLE]: true,
 } satisfies Record<PushType, true>;
 
 /** Skips a message that does not match contracts/asyncapi.yaml, without stopping the channel (REQ-HMI-006). */

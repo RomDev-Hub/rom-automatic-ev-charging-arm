@@ -6,6 +6,7 @@ type Schemas = components["schemas"];
 export type Credentials = Schemas["Credentials"];
 export type SessionInfo = Schemas["SessionInfo"];
 export type TelemetryData = Schemas["TelemetryData"];
+export type CommandResult = Schemas["CommandResult"];
 
 /** A message for the operator: a stable code and its parameters, put into words through the locale (REQ-I18N-004). */
 export interface Notice {
@@ -37,6 +38,10 @@ export function closeSession(): Promise<Result<unknown>> {
 
 export function readTelemetry(): Promise<Result<TelemetryData>> {
   return settle(() => api().GET("/api/telemetry"));
+}
+
+export function sendStop(): Promise<Result<CommandResult>> {
+  return settle(() => api().POST("/api/commands/stop"));
 }
 
 async function settle<T>(

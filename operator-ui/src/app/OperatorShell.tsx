@@ -1,20 +1,18 @@
 import { PhaseHeader } from "../features/phase/PhaseHeader";
+import { StopButton } from "../features/stop/StopButton";
 import { useI18n } from "../shared/i18n/I18nProvider";
 import { LocaleSwitch } from "../shared/i18n/LocaleSwitch";
-import type { OperatorState } from "./operatorStore";
+import { Toast } from "../shared/Toast";
+import type { OperatorState, OperatorStore } from "./operatorStore";
 
 interface OperatorShellProps {
   state: OperatorState;
   username: string;
-  onSignOut: () => Promise<void>;
+  store: OperatorStore;
 }
 
-/** Frame of every view after sign-in. */
-export function OperatorShell({
-  state,
-  username,
-  onSignOut,
-}: OperatorShellProps) {
+/** Frame of every view after sign-in: phases, Stop and session controls on top. */
+export function OperatorShell({ state, username, store }: OperatorShellProps) {
   const { t } = useI18n();
   return (
     <div className="shell">
@@ -25,12 +23,13 @@ export function OperatorShell({
           telemetryHz={state.telemetryHz}
         />
         <div className="shell-session">
+          <StopButton command={state.commands.latest} onStop={store.stop} />
           <span>{username}</span>
           <LocaleSwitch />
           <button
             type="button"
             onClick={() => {
-              void onSignOut();
+              void store.signOut();
             }}
           >
             {t("hmi.session.logout")}
@@ -38,6 +37,7 @@ export function OperatorShell({
         </div>
       </header>
       <main className="shell-main" />
+      <Toast toast={state.toast} onDismiss={store.dismissToast} />
     </div>
   );
 }

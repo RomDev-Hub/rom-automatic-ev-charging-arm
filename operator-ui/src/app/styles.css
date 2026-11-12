@@ -8,6 +8,9 @@
   --color-text-muted: #9fadbb;
   --color-focus: #64b5f6;
   --color-warning: #ffb74d;
+  --color-stop: #c62828;
+  --color-stop-hover: #e53935;
+  --color-on-stop: #ffffff;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 1rem;
@@ -151,4 +154,43 @@ button:enabled {
 .telemetry-status--connecting,
 .telemetry-status--closed {
   color: var(--color-warning);
+}
+
+.stop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stop-button {
+  min-width: 7rem;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-stop);
+  border-color: var(--color-stop);
+  color: var(--color-on-stop);
+  font-weight: 700;
+}
+
+.stop-button:hover {
+  background: var(--color-stop-hover);
+}
+
+.command-progress {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.toast-region {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.toast {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
 }

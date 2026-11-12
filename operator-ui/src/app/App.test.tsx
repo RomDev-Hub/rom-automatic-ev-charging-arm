@@ -245,3 +245,86 @@ describe("phase header", () => {
     expect(screen.queryByText("Mất kết nối")).not.toBeNull();
   });
 });
+
+describe("Stop", () => {
+  const COMMAND_ID = "0193a1f2-7d20-7c41-8e10-5b9f2a3c4d5e";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("sends Stop, follows its lifecycle by command_id and shows the result for 2.6 s", async () => {
+    vi.useFakeTimers();
+    const requests = serve({
+      "GET /api/session": () => json(200, ADMIN),
+      "GET /api/telemetry": () => json(200, { phase: SAFE_HOLD_BLOCK }),
+      // As the core does, the lifecycle goes out on the channel before the REST answer.
+      "POST /api/commands/stop": () => {
+        for (const state of ["pending", "accepted", "completed"]) {
+          sockets[0]?.receive(
+            pushed("command.lifecycle", {
+              command_id: COMMAND_ID,
+              command: "stop",
+              state,
+            }),
+          );
+        }
+        return json(200, {
+          command_id: COMMAND_ID,
+          command: "stop",
+          code: "cmd.stop.engaged",
+          params: {},
+          phase: "SAFE_STOP",
+        });
+      },
+    });
+    await renderApp();
+    act(() => sockets[0]?.open());
+
+    fireEvent.click(screen.getByRole("button", { name: "Dừng" }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+
+    expect(requests.map(route)).toContain("POST /api/commands/stop");
+    expect(screen.queryByText("Lệnh Dừng: đã thực hiện xong")).not.toBeNull();
+    expect(screen.getByRole("status").textContent).toBe(
+      "Lệnh Dừng đã có hiệu lực",
+    );
+    await act(() => vi.advanceTimersByTimeAsync(2_599));
+    expect(screen.getByRole("status").textContent).toBe(
+      "Lệnh Dừng đã có hiệu lực",
+    );
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("returns to the login form when Stop finds the session expired", async () => {
+    serve({
+      "GET /api/session": () => json(200, ADMIN),
+      "POST /api/commands/stop": () => problem(401, "err.auth.required"),
+    });
+    await renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dừng" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn",
+    );
+    expect(sockets.map((socket) => socket.readyState)).toEqual([3]);
+  });
+
+  it("is the only control whose label starts with Dừng or Stop, in both languages", async () => {
+    serve({ "GET /api/session": () => json(200, ADMIN) });
+    await renderApp();
+    const stopLabels = () =>
+      [...screen.getAllByRole("button"), ...screen.getAllByRole("combobox")]
+        .map((control) => control.textContent.trim())
+        .filter((label) => /^(Dừng|Stop)/.test(label));
+
+    const vietnamese = stopLabels();
+    fireEvent.change(screen.getByLabelText("Ngôn ngữ"), {
+      target: { value: "en" },
+    });
+
+    expect([vietnamese, stopLabels()]).toEqual([["Dừng"], ["Stop"]]);
+  });
+});
