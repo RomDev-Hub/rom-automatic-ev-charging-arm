@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from robot_core.gateway.events import CommandState
 from robot_core.gateway.problems import ProblemCode, ProblemError, problem_responses
@@ -21,18 +21,15 @@ STOP_ENGAGED = "cmd.stop.engaged"
 
 
 class CommandResult(BaseModel):
-    """Result of a command the core carried out (REQ-GW-013).
+    """Result of a command the core carried out (REQ-GW-013)."""
 
-    Attributes:
-        command_id: Tags the command's lifecycle messages on /api/ws (REQ-GW-007).
-        phase: Phase of the mission machine once the command was handled.
-    """
-
-    command_id: str
+    command_id: str = Field(
+        description="Tags the command's lifecycle messages on /api/ws (REQ-GW-007)."
+    )
     command: str
     code: str
     params: dict[str, Any]
-    phase: Phase
+    phase: Phase = Field(description="Mission phase once the command was handled.")
 
 
 def command_routes(runtime: CoreRuntime, sessions: SessionStore) -> APIRouter:

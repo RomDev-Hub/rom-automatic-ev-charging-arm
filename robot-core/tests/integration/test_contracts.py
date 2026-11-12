@@ -5,12 +5,24 @@ from pathlib import Path
 
 import pytest
 
+from robot_core.gateway.openapi import render
 from robot_core.gateway.problems import ProblemCode, problem_response
 
 CONTRACTS = Path(__file__).resolve().parents[3] / "contracts"
 ERROR_CATALOGUE = json.loads(
     (CONTRACTS / "schemas" / "error-codes.schema.json").read_text(encoding="utf-8")
 )
+
+
+def test_committed_openapi_document_is_generated_from_the_app() -> None:
+    """REQ-GW-001: contracts/openapi.json, OpenAPI 3.1, equals a fresh generation."""
+    committed = (CONTRACTS / "openapi.json").read_text(encoding="utf-8")
+
+    assert json.loads(committed)["openapi"].startswith("3.1.")
+    assert render() == committed, (
+        "contracts/openapi.json is stale; regenerate it from robot-core with "
+        "`uv run python -m robot_core.gateway.openapi ../contracts/openapi.json`"
+    )
 
 
 def catalogue_entry(code: str) -> dict:
