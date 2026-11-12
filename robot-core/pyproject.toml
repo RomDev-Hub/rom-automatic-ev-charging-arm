@@ -4,13 +4,18 @@ dynamic = ["version"]
 requires-python = ">=3.14"
 license = "AGPL-3.0-or-later"
 dependencies = [
+  "argon2-cffi>=25.1.0",
+  "fastapi>=0.162.5",
+  "mcap>=1.6.0",
   "numpy>=2.5.4",
   # Chỉ khai cho Linux vì PyPI không có wheel Pinocchio cho Windows (ADR 0008).
   "pin>=4.1.0; sys_platform == 'linux'",
+  "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+  "httpx>=0.28.1",
   "mypy>=2.4.1",
   "pytest>=9.2.0",
   "ruff>=0.17.4",
