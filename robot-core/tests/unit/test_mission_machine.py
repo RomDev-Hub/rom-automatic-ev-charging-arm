@@ -190,3 +190,34 @@ def test_untrusted_arm_data_keeps_safe_hold_despite_full_evidence(clock) -> None
 
     assert machine.step(evidence(arm_data_fault="port.stale_data")) is None
     assert machine.phase is Phase.SAFE_HOLD
+
+
+@pytest.mark.parametrize(
+    ("start", "previous"),
+    [(MissionMachine, Phase.BOOT), (holding, Phase.SAFE_HOLD), (idle, Phase.S0_IDLE)],
+    ids=["BOOT", "SAFE_HOLD", "S0_IDLE"],
+)
+def test_stop_command_enters_safe_stop_from_any_phase(clock, start, previous) -> None:
+    """REQ-MIS-066, REQ-MIS-005: SAFE_STOP with its own code, pointing back."""
+    machine = start(clock)
+
+    transition = machine.apply_stop_command()
+
+    assert transition == Transition(
+        previous=previous,
+        phase=Phase.SAFE_STOP,
+        code="fsm.safe_stop.stop_command",
+        params={},
+        expected_next=previous,
+    )
+    assert machine.phase is Phase.SAFE_STOP
+    assert machine.expected_next is previous
+
+
+def test_untrusted_arm_data_keeps_safe_stop(clock) -> None:
+    """REQ-MIS-051: untrusted arm data cannot turn SAFE_STOP into SAFE_HOLD."""
+    machine = idle(clock)
+    machine.apply_stop_command()
+
+    assert machine.step(evidence(arm_data_fault="port.disconnected")) is None
+    assert machine.phase is Phase.SAFE_STOP

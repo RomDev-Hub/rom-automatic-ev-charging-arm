@@ -15,13 +15,14 @@ from robot_core.ports.arm import ArmPort, ArmState
 
 # Fixed by the stow pose definition in docs/requirements/mission-motion-arm.md.
 STOW_TOLERANCE_RAD = 0.12
+HOLDS_ARM_STILL = frozenset({Phase.SAFE_HOLD, Phase.SAFE_STOP})
 
 
 class Supervisor:
     """Runs one supervision tick per call; the caller owns the loop and its period.
 
     Arm data that is stale (older than `max_arm_data_age_s`), missing or faulted
-    forces SAFE_HOLD (REQ-MOT-024); while the machine holds, every tick asks the
+    forces SAFE_HOLD (REQ-MOT-024); in SAFE_HOLD and SAFE_STOP, every tick asks the
     arm to stop (REQ-MIS-015, REQ-MOT-015).
     """
 
@@ -41,15 +42,24 @@ class Supervisor:
         self._max_arm_data_age_s = max_arm_data_age_s
 
     def tick(self, evidence: Mapping[ChecklistItem, bool | None]) -> Transition | None:
-        """Read the arm once, step the machine, then stop the arm while it holds.
+        """Read the arm once, step the machine, then stop the arm while it is held.
 
         `evidence` carries the checks whose sources are not read here;
         `chk.motion_port` always comes from the arm port itself.
         """
         transition = self._machine.step(self._snapshot(evidence))
-        if self._machine.phase is Phase.SAFE_HOLD:
+        if self._machine.phase in HOLDS_ARM_STILL:
             self._arm.stop()  # refused while the link is down, so sent every tick
         return transition
+
+    def request_stop(self) -> Transition | None:
+        """Stop the arm at once, without waiting for a tick, then enter SAFE_STOP.
+
+        The operator's Stop command (REQ-MIS-066), an operational stop rather than a
+        safety function (ADR 0005). Returns None when the machine is already stopped.
+        """
+        self._arm.stop()
+        return self._machine.apply_stop_command()
 
     def _snapshot(self, evidence: Mapping[ChecklistItem, bool | None]) -> Snapshot:
         arm = self._read_arm()

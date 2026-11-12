@@ -147,6 +147,60 @@ def test_adapter_fault_stops_the_segment_and_forces_safe_hold(clock) -> None:
     )
 
 
+def test_stop_request_stops_the_segment_before_any_tick_then_enters_safe_stop(
+    clock,
+) -> None:
+    """REQ-MIS-066: the Stop request stops the arm at once, then enters SAFE_STOP."""
+    station = idle_with_segment_half_done(clock)
+
+    transition = station.supervisor.request_stop()
+
+    assert transition == Transition(
+        previous=Phase.S0_IDLE,
+        phase=Phase.SAFE_STOP,
+        code="fsm.safe_stop.stop_command",
+        params={},
+        expected_next=Phase.S0_IDLE,
+    )
+    clock.advance(1.0)
+    assert station.arm.read_state().progress == SegmentProgress(
+        segment=SEGMENT, status=SegmentStatus.STOPPED, fraction=0.5
+    )
+
+
+def test_safe_stop_keeps_the_arm_still_and_never_ends_on_full_evidence(clock) -> None:
+    """REQ-MIS-051: every tick stops the arm, and SAFE_STOP never ends by itself."""
+    station = Station(clock)
+    station.machine.complete_boot()
+    station.tick()
+    station.supervisor.request_stop()
+    station.arm.execute(SEGMENT)  # motion ordered after the Stop
+
+    for _ in range(320):  # 10 s of trusted data, full evidence and the arm stowed
+        assert station.tick() is None
+
+    assert station.machine.phase is Phase.SAFE_STOP
+    # Stopped by the first tick, 1/32 s into the segment.
+    assert station.arm.read_state().progress == SegmentProgress(
+        segment=SEGMENT, status=SegmentStatus.STOPPED, fraction=0.00048828125
+    )
+
+
+def test_stop_request_in_safe_stop_changes_no_phase_but_stops_the_arm(clock) -> None:
+    """REQ-MIS-066: a second Stop is no phase change, yet stops the arm at once."""
+    station = idle_with_segment_half_done(clock)
+    station.supervisor.request_stop()
+    station.arm.execute(SEGMENT)
+    clock.advance(1.25)  # no tick in between: only the Stop request can stop it
+
+    assert station.supervisor.request_stop() is None
+
+    clock.advance(1.0)
+    assert station.arm.read_state().progress == SegmentProgress(
+        segment=SEGMENT, status=SegmentStatus.STOPPED, fraction=0.9375
+    )
+
+
 def test_arm_stopped_away_from_stow_keeps_safe_hold_on_full_evidence(clock) -> None:
     """REQ-MIS-017: with every check passing, SAFE_HOLD still needs the arm stowed."""
     station = idle_with_segment_half_done(clock)

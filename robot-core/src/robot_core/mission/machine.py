@@ -13,6 +13,7 @@ class Phase(StrEnum):
     BOOT = "BOOT"
     SAFE_HOLD = "SAFE_HOLD"
     S0_IDLE = "S0_IDLE"
+    SAFE_STOP = "SAFE_STOP"
 
 
 class Reason(StrEnum):
@@ -21,6 +22,7 @@ class Reason(StrEnum):
     BOOT_READY = "fsm.boot.ready"
     IDLE_AFTER_SAFE_HOLD = "fsm.idle.after_safe_hold"
     SAFE_HOLD_ARM_DATA = "fsm.safe_hold.arm_data"
+    STOP_COMMAND = "fsm.safe_stop.stop_command"
 
 
 class ChecklistItem(StrEnum):
@@ -81,6 +83,7 @@ class MissionMachine:
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._phase = Phase.BOOT
+        self._expected_next = EXPECTED_NEXT.get(Phase.BOOT)
         self._entered_at_s = clock()
         self._failing_checks: tuple[ChecklistItem, ...] = tuple(ChecklistItem)
 
@@ -92,9 +95,10 @@ class MissionMachine:
     def expected_next(self) -> Phase | None:
         """Phase entered once the current one's waiting condition is met (REQ-MIS-005).
 
-        None when the catalogue holds no successor for the current phase.
+        SAFE_STOP points back to the phase it stopped. None when the catalogue holds
+        no successor for the current phase.
         """
-        return EXPECTED_NEXT.get(self._phase)
+        return self._expected_next
 
     @property
     def time_in_phase_s(self) -> float:
@@ -121,9 +125,10 @@ class MissionMachine:
     def step(self, snapshot: Snapshot) -> Transition | None:
         """Advance the machine on one snapshot.
 
-        Untrusted arm data forces SAFE_HOLD from any phase (REQ-MOT-024). SAFE_HOLD
-        ends in S0_IDLE only on evidence, never on elapsed time: every check passes
-        and the arm is measured at its stow pose (REQ-MIS-017).
+        Untrusted arm data forces SAFE_HOLD from any phase but SAFE_STOP
+        (REQ-MOT-024). SAFE_HOLD ends in S0_IDLE only on evidence, never on elapsed
+        time: every check passes and the arm is measured at its stow pose
+        (REQ-MIS-017).
         """
         if self._phase is Phase.SAFE_HOLD:
             self._failing_checks = tuple(
@@ -146,26 +151,42 @@ class MissionMachine:
     def force_safe_hold(
         self, code: Reason, params: Params | None = None
     ) -> Transition | None:
-        """Enter SAFE_HOLD from any phase with a `fsm.safe_hold.*` reason.
+        """Enter SAFE_HOLD with a `fsm.safe_hold.*` reason, from any phase.
 
-        Returns None when the machine is already holding.
+        Returns None when the machine already holds, or is in SAFE_STOP.
         """
         return self._enter(Phase.SAFE_HOLD, code, params)
+
+    def apply_stop_command(self) -> Transition | None:
+        """Enter SAFE_STOP on the operator's Stop command, from any phase (REQ-MIS-066).
+
+        Returns None when the machine is already stopped.
+        """
+        return self._enter(Phase.SAFE_STOP, Reason.STOP_COMMAND)
 
     def _enter(
         self, phase: Phase, code: Reason, params: Params | None = None
     ) -> Transition | None:
-        """The single gate of every phase change (REQ-MIS-002)."""
-        if phase is self._phase:
+        """The single gate of every phase change (REQ-MIS-002).
+
+        Nothing leaves SAFE_STOP but a restart until the resume command exists
+        (REQ-MIS-051, REQ-MIS-070).
+        """
+        previous = self._phase
+        if phase is previous or previous is Phase.SAFE_STOP:
             return None
+        expected_next = (
+            previous if phase is Phase.SAFE_STOP else EXPECTED_NEXT.get(phase)
+        )
         transition = Transition(
-            previous=self._phase,
+            previous=previous,
             phase=phase,
             code=code,
             params=MappingProxyType(dict(params or {})),
-            expected_next=EXPECTED_NEXT.get(phase),
+            expected_next=expected_next,
         )
         self._phase = phase
+        self._expected_next = expected_next
         self._entered_at_s = self._clock()
         if phase is Phase.SAFE_HOLD:
             self._failing_checks = tuple(ChecklistItem)
