@@ -45,6 +45,19 @@ repos:
     rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
+  # Lint và định dạng bằng ruff, cùng bản với ruff trong robot-core/uv.lock; cấu hình chung ở ruff.toml của gốc repo.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: c0f278f1254ccc8fb09676bcdb8d847e7db493e5  # frozen: v0.17.4
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+  # Chặn commit khi robot-core/uv.lock không còn khớp với robot-core/pyproject.toml.
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: d1df990f871e616da38bb602a2671d5e840b9989  # frozen: 0.13.7
+    hooks:
+      - id: uv-lock
+        files: ^robot-core/(pyproject\.toml|uv\.lock)$
+        args: [--check, --project, robot-core]
   # Hook viết riêng cho repo.
   - repo: local
     hooks:

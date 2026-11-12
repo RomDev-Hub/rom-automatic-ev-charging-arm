@@ -10,18 +10,45 @@ from collections import defaultdict
 PLACEHOLDER = ".gitkeep"
 ROBOT_CORE = "robot-core/src/robot_core"
 ROBOT_CORE_PACKAGES = (
-    "gateway", "mission", "motion", "arm", "perception", "calibration", "ports",
-    "adapters", "config", "recording", "harvest", "ota", "defaults", "locales", "cli",
+    "gateway",
+    "mission",
+    "motion",
+    "arm",
+    "perception",
+    "calibration",
+    "ports",
+    "adapters",
+    "config",
+    "recording",
+    "harvest",
+    "ota",
+    "defaults",
+    "locales",
+    "cli",
 )
-DOC_AREAS = ("decisions", "requirements", "safety", "architecture", "verification", "manual")
+DOC_AREAS = (
+    "decisions",
+    "requirements",
+    "safety",
+    "architecture",
+    "verification",
+    "manual",
+)
 
 # Directories that must exist exactly as named; nothing may be added beside their listed children.
 FIXED = {
-    ".devcontainer", ".github", ".github/workflows",
+    ".devcontainer",
+    ".github",
+    ".github/workflows",
     "contracts",
-    "robot-core", "robot-core/src", ROBOT_CORE, "robot-core/tests",
-    "operator-ui", "operator-ui/src",
-    "training", "training/src",
+    "robot-core",
+    "robot-core/src",
+    ROBOT_CORE,
+    "robot-core/tests",
+    "operator-ui",
+    "operator-ui/src",
+    "training",
+    "training/src",
     "deploy",
     "third_party",
     "docs",
@@ -34,9 +61,11 @@ OPEN = {
     *(f"{ROBOT_CORE}/{package}" for package in ROBOT_CORE_PACKAGES),
     *(f"robot-core/tests/{tier}" for tier in ("unit", "integration", "sim", "hil")),
     *(f"operator-ui/src/{area}" for area in ("app", "features", "shared")),
-    "training/src/training", "training/configs",
+    "training/src/training",
+    "training/configs",
     *(f"deploy/{area}" for area in ("docker", "release", "host", "os", "site")),
-    "datasets", "models",
+    "datasets",
+    "models",
     "third_party/licenses",
     *(f"docs/{area}" for area in DOC_AREAS),
 }
@@ -45,7 +74,10 @@ OPEN = {
 def repo_paths() -> list[str]:
     listing = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-        check=True, capture_output=True, text=True, encoding="utf-8",
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     ).stdout
     return [path for path in listing.split("\0") if path]
 
@@ -66,7 +98,11 @@ def find_violations(paths: list[str]) -> list[str]:
             children["/".join(parts[: depth - 1]) or "."].add(parts[depth - 1])
             if depth < len(parts):
                 directories.add("/".join(parts[:depth]))
-    problems = [f"directory not in the agreed layout: {d}/" for d in sorted(directories) if not is_allowed(d)]
+    problems = [
+        f"directory not in the agreed layout: {d}/"
+        for d in sorted(directories)
+        if not is_allowed(d)
+    ]
     problems += [
         f"remove {PLACEHOLDER}: {d}/ already has content"
         for d, names in sorted(children.items())

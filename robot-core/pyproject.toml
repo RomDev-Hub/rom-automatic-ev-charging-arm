@@ -30,7 +30,7 @@ packages = ["src/robot_core"]
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [tool.ruff]
-line-length = 88
+extend = "../ruff.toml"
 
 [tool.mypy]
 files = ["src"]
