@@ -1,4 +1,4 @@
-# Kiểm tra trên mọi lần push vào main, develop và mọi PR: hook, quy ước commit, bí mật, giấy phép, test của robot-core và operator-ui.
+# Kiểm tra trên mọi lần push vào main, develop và mọi PR: hook, quy ước commit, bí mật, giấy phép, test của robot-core và operator-ui, đầu-cuối trên stack mô phỏng.
 name: ci
 
 on:
@@ -188,6 +188,48 @@ jobs:
             echo "::error::pytest skipped a test; the Linux job allows no skipped test"
             exit 1
           fi
+
+  # Đầu-cuối trên stack mô phỏng (ADR 0003): build image core (target runtime) và hmi với tag mà compose.sim.yaml dùng, rồi chạy scripts/e2e_sim.py trên chính hai image đó.
+  # Chờ python-linux: job này đọc cache mà python-linux vừa ghi nên không biên dịch ur_rtde lần thứ hai, và chạy đầu-cuối khi test của robot-core đỏ thì không thêm thông tin gì.
+  # Không chờ checks: checks kiểm quy ước commit, định dạng, bí mật và giấy phép, không đổi điều mà job này quan sát.
+  e2e-sim:
+    needs: python-linux
+    runs-on: ubuntu-24.04
+    # Đủ cho một lần biên dịch ur_rtde khi cache trống, ước 20–25 phút trên runner 2 nhân, cộng phần chạy.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Target dev mà python-linux build dựng trên target runtime, nên scope cache mặc định python-linux ghi đã có mọi lớp của image này.
+      # Không ghi lại vào scope đó: mỗi scope chỉ giữ lần ghi sau cùng, ghi đè thì mất các lớp riêng của target dev.
+      - name: Build the core runtime image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/core.Dockerfile
+          target: runtime
+          load: true
+          tags: ev-arm-core:sim
+          cache-from: type=gha
+
+      # Cùng chính sách cache với python-linux, ở scope riêng của hmi.
+      - name: Build the hmi image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/hmi.Dockerfile
+          load: true
+          tags: ev-arm-hmi:sim
+          cache-from: type=gha,scope=hmi
+          cache-to: type=gha,mode=max,scope=hmi
+
+      # Dựng stack từ hai image vừa build, không build lại; script thoát khác 0 khi có kiểm trượt.
+      - name: Run the end-to-end simulation check
+        run: python3 scripts/e2e_sim.py --no-build
 
   # Test và bản build của operator-ui; lint, định dạng, kiểm kiểu và kiểm kiểu sinh từ contracts/ đã chạy dưới dạng hook trong job checks.
   ui:
