@@ -46,7 +46,7 @@ Mọi container chạy với rootfs chỉ đọc và user không phải root. D�
 
 User chạy service `core` là `ev-arm`, UID 10001, GID 10001, tạo trong `deploy/docker/core.Dockerfile`; service `hmi` chạy cùng UID và GID (`deploy/docker/hmi.Dockerfile`). UID và GID cố định vì volume đã có dữ liệu giữ chủ sở hữu cũ (mục Hệ quả), nên image về sau đổi UID sẽ không ghi được vào volume đó; số trên 10000 để không trùng tài khoản thường của host, mà Debian và Ubuntu cấp từ 1000 trở lên.
 
-Chỗ ghi tạm duy nhất ngoài các volume là `/tmp` của từng service, một tmpfs có giới hạn dung lượng khai trong `deploy/compose.yaml` (64 MiB với `core`): nằm trong RAM và mất khi container khởi động lại, nên không giữ được dữ liệu runtime nào.
+Chỗ ghi ngoài các volume chỉ là tmpfs có giới hạn dung lượng, khai trong `deploy/compose.yaml`: `/tmp` của từng service (64 MiB với `core`), và `/data`, `/config` của Caddy trong `hmi`, thuộc UID 10001. Tmpfs nằm trong RAM và mất khi container khởi động lại, nên không giữ được dữ liệu runtime nào.
 
 Mỗi thư mục trong bảng đặt lại được bằng biến môi trường `EV_ARM_<TÊN>_DIR`, ví dụ `EV_ARM_RECORDINGS_DIR` thay cho `/var/lib/ev-arm/recordings`; biến không đặt thì dùng đường dẫn trong bảng. Khi chạy thẳng trên máy, không qua container (mức 1 trong `CONTRIBUTING.md`), nơi `/var/lib/ev-arm/` không dùng được, người phát triển đặt các biến này; robot-core không tự dò thư mục theo XDG Base Directory, để container và máy phát triển dùng chung một cơ chế.
 

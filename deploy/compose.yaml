@@ -21,8 +21,8 @@ services:
       start_interval: 2s
     logging:
       driver: local
-    # Không khai ports: core không mở cổng nào ra LAN (REQ-DEP-014). Chỉ core vào mạng cell (REQ-DEP-015).
-    networks: [cell]
+    # Không khai ports: core không mở cổng nào ra LAN (REQ-DEP-014). Chỉ core vào mạng cell (REQ-DEP-015); hmi gọi core qua mạng backend.
+    networks: [cell, backend]
     volumes:
       - config:/var/lib/ev-arm/config
       - state:/var/lib/ev-arm/state
@@ -35,8 +35,43 @@ services:
         tmpfs:
           size: 64m
 
+  hmi:
+    image: ghcr.io/romdev-hub/ev-arm-hmi
+    # Cùng mức quyền tối thiểu như core (REQ-DEP-011).
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    depends_on:
+      core:
+        condition: service_healthy
+    # /healthz do Caddy tự trả lời trên loopback của container; image alpine có sẵn wget của busybox.
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
+    logging:
+      driver: local
+    # Không khai ports ở đây: Compose nối danh sách ports của mọi file, nên cổng chỉ khai ở file ghép thêm. hmi không vào mạng cell (REQ-DEP-015).
+    networks: [backend, edge]
+    # Caddy ghi CA nội bộ và chứng chỉ vào /data, /config (ADR 0007). Dùng cú pháp ngắn vì chỉ nó nhận uid và gid cho tmpfs.
+    tmpfs:
+      - /tmp:size=16m,uid=10001,gid=10001,mode=0700
+      - /data:size=16m,uid=10001,gid=10001,mode=0700
+      - /config:size=1m,uid=10001,gid=10001,mode=0700
+
 networks:
   cell: {}
+  # Mạng riêng của core và hmi, không có đường ra ngoài host.
+  backend:
+    internal: true
+  # Mạng của hmi chỉ để mở cổng ra ngoài.
+  # Trên thiết bị thật, giữ hmi ngoài LAN của cell còn cần luật tường lửa của host, chốt cùng deploy/host.
+  edge: {}
 
 # Năm volume dữ liệu của thiết bị, tên đúng bảng của ADR 0007 (REQ-DEP-016).
 volumes:
