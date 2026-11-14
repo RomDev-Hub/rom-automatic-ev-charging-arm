@@ -41,6 +41,11 @@ updates:
       npm-security:
         applies-to: security-updates
         patterns: ["*"]
+    # typescript-eslint và openapi-typescript (hook ESLint và hook kiểm kiểu sinh từ contracts/ của operator-ui) cần compiler API của TypeScript 6 trở xuống, mà TypeScript 7 không có.
+    # Nâng TypeScript lên bản major là một việc riêng; bỏ ignore này khi hai gói đó nhận bản major mới.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   # Cập nhật rev (SHA kèm chú thích "frozen") trong .pre-commit-config.yaml.
   - package-ecosystem: pre-commit
