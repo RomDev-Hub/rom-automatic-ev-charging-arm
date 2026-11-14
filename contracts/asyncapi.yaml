@@ -1,0 +1,696 @@
+# Hợp đồng kênh WSS mà service core phát tới HMI, theo AsyncAPI 3.0.0 (ADR 0006).
+# Bản nháp: các đề xuất cho những điểm ADR 0006 còn để mở nằm trong info.description.
+asyncapi: 3.0.0
+info:
+  title: Kênh WSS của robot-core
+  version: 0.1.0-draft
+  description: |-
+    **Bản nháp.** Hợp đồng này chưa chốt. Các mục dưới đây là đề xuất cho những điểm ADR 0006 còn để mở; trước khi được chốt, chúng đổi được mà không tính là thay đổi không tương thích.
+
+    Kênh WSS là kênh đẩy duy nhất từ service `core` tới HMI (REQ-GW-002), mang telemetry theo chu kỳ, sự kiện và vòng đời lệnh. Lệnh chỉ gửi qua REST theo `contracts/openapi.json`; kênh này không nhận lệnh nào (REQ-GW-006). Video MJPEG đi qua route REST riêng.
+
+    Mỗi thông điệp là một khung văn bản WebSocket ([RFC 6455](https://www.rfc-editor.org/rfc/rfc6455)) chứa một object JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)) theo dạng JSON của [CloudEvents 1.0](https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md): thuộc tính của envelope nằm ở cấp đầu, nội dung nằm trong `data`. Số không hữu hạn được gửi thành `null`, nghĩa là không đo được (REQ-GW-004).
+
+    Đề xuất:
+
+    - Envelope theo đủ CloudEvents 1.0, không chỉ mượn tên thuộc tính: bắt buộc `specversion`, `id`, `source`, `type`, `time`, `sequence` và `data`.
+    - `sequence` theo [extension `sequence`](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/sequence.md) của CloudEvents: chuỗi đúng 20 chữ số thập phân, thêm số 0 ở đầu, tăng 1 sau mỗi thông điệp trong phạm vi một `source`, nên so sánh chuỗi cho cùng kết quả với so sánh số và mọi kết nối thấy `sequence` tăng dần (REQ-GW-005).
+    - `source` là `/core/<ID phiên chạy>` (REQ-REC-013); khi `core` khởi động lại, `source` đổi và `sequence` bắt đầu lại từ 1.
+    - `type` có tiền tố `io.github.romdev-hub.ev-arm.`, là tên miền của tag URI trong danh mục mã lỗi viết đảo theo khuyến nghị reverse-DNS của CloudEvents.
+    - `code` là mã ổn định kèm `params`: mã lỗi và cảnh báo lấy từ `contracts/schemas/error-codes.schema.json`; mã lý do của chuyển pha danh nghĩa và mã kết quả của lệnh theo requirement của vùng sở hữu.
+    - Vòng đời lệnh có năm trạng thái do `core` phát: `pending`, `accepted`, `rejected`, `timed-out`, `completed`. Trạng thái "chưa rõ" của REQ-HMI-065 do HMI tự đặt khi mất kết nối, `core` không phát.
+    - Đường dẫn kênh `/api/ws` và tên session cookie `__Host-id`.
+
+    Chưa có trong bản nháp: tín hiệu deadman của jog (đi trên REST hay WSS chưa chốt), nội dung chi tiết của từng khối telemetry, và bước CI kiểm hợp đồng này khớp với mã (ADR 0006).
+  license:
+    name: AGPL-3.0-or-later
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+defaultContentType: application/json
+servers:
+  station:
+    host: '{host}'
+    protocol: wss
+    title: Service hmi của trạm
+    description: |-
+      Service `hmi` lo TLS ở cổng HTTPS 443 trên LAN của trạm và làm proxy tới service `core`; `core` không mở cổng ra mạng của trạm, và không cổng nào mở vào từ WAN (REQ-GW-010).
+    variables:
+      host:
+        description: Tên hoặc địa chỉ của service `hmi` trên LAN của trạm.
+    security:
+      - $ref: '#/components/securitySchemes/session'
+channels:
+  push:
+    address: /api/ws
+    title: Kênh đẩy tới HMI
+    description: |-
+      Một kết nối WSS mang mọi dữ liệu đẩy tới HMI (ADR 0006, REQ-GW-002); mọi thông điệp được phát cho mọi kết nối đang mở.
+
+      Bắt tay WebSocket cần session cookie hợp lệ; thiếu thì bắt tay bị từ chối trước khi nâng cấp kết nối (REQ-AUTH-006). Thông tin xác thực không bao giờ nằm trên URL, kể cả query string (REQ-AUTH-005). Kiểm header `Origin` ở mỗi lần bắt tay là requirement đề xuất (REQ-AUTH-020).
+
+      Client không nhận kịp một thông điệp trong mặc định 0,25 s bị ngắt kết nối (REQ-GW-018). Sau khi nối lại, client đọc bản chụp telemetry mới nhất qua REST (REQ-GW-019).
+    messages:
+      telemetrySnapshot:
+        $ref: '#/components/messages/telemetrySnapshot'
+      phaseChanged:
+        $ref: '#/components/messages/phaseChanged'
+      motionBlocked:
+        $ref: '#/components/messages/motionBlocked'
+      faultRaised:
+        $ref: '#/components/messages/faultRaised'
+      supervisionChanged:
+        $ref: '#/components/messages/supervisionChanged'
+      commandLifecycle:
+        $ref: '#/components/messages/commandLifecycle'
+operations:
+  sendTelemetrySnapshot:
+    action: send
+    channel:
+      $ref: '#/channels/push'
+    summary: Phát telemetry theo chu kỳ, mặc định 40 ms (REQ-GW-016).
+    messages:
+      - $ref: '#/channels/push/messages/telemetrySnapshot'
+  sendPhaseChanged:
+    action: send
+    channel:
+      $ref: '#/channels/push'
+    summary: Phát ngay mỗi lần chuyển pha (REQ-GW-008, REQ-MIS-002).
+    messages:
+      - $ref: '#/channels/push/messages/phaseChanged'
+  sendMotionBlocked:
+    action: send
+    channel:
+      $ref: '#/channels/push'
+    summary: Phát ngay khi bộ kiểm segment chặn một lệnh chuyển động (REQ-GW-008, REQ-MOT-014).
+    messages:
+      - $ref: '#/channels/push/messages/motionBlocked'
+  sendFaultRaised:
+    action: send
+    channel:
+      $ref: '#/channels/push'
+    summary: Phát ngay khi có lỗi (REQ-GW-008).
+    messages:
+      - $ref: '#/channels/push/messages/faultRaised'
+  sendSupervisionChanged:
+    action: send
+    channel:
+      $ref: '#/channels/push'
+    summary: Phát ngay khi mức giám sát đổi (REQ-GW-008, REQ-MIS-073).
+    messages:
+      - $ref: '#/channels/push/messages/supervisionChanged'
+  sendCommandLifecycle:
+    action: send
+    channel:
+      $ref: '#/channels/push'
+    summary: Phát mỗi lần một lệnh REST đổi trạng thái trong vòng đời (REQ-GW-007).
+    messages:
+      - $ref: '#/channels/push/messages/commandLifecycle'
+components:
+  securitySchemes:
+    session:
+      type: httpApiKey
+      name: __Host-id
+      in: cookie
+      description: |-
+        Session cookie có `Secure`, `HttpOnly` và `SameSite=Strict` (ADR 0006, REQ-AUTH-004); trình duyệt gửi nó kèm bước bắt tay WebSocket. Tiền tố `__Host-` và tên chung `id` theo khuyến nghị của [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+  messages:
+    telemetrySnapshot:
+      name: telemetrySnapshot
+      title: Telemetry
+      summary: Bản chụp trạng thái của máy, phát theo chu kỳ.
+      description: |-
+        `time` là thời điểm dựng bản chụp. Khi một khối không dựng được, khối đó được thay bằng `BlockUnavailable` và các khối khác vẫn được phát; khi không dựng được cả gói, `core` phát lại gói hợp lệ gần nhất với `time` cũ của gói đó, nên HMI nhận ra dữ liệu cũ (REQ-GW-017). Bản chụp qua REST dùng cùng schema của `data` (REQ-GW-019).
+      payload:
+        $ref: '#/components/schemas/TelemetrySnapshot'
+    phaseChanged:
+      name: phaseChanged
+      title: Chuyển pha
+      summary: Máy trạng thái mission vừa chuyển pha.
+      description: |-
+        Cùng nội dung với sự kiện chuyển pha ghi vào kênh sự kiện của MCAP (REQ-REC-007); trace của test SIM so chuỗi `phase` và `code` (REQ-SIM-032).
+      payload:
+        $ref: '#/components/schemas/PhaseChanged'
+      examples:
+        - name: insertRetry
+          summary: Lực cắm vượt giới hạn ở lần cắm thứ nhất.
+          payload:
+            specversion: '1.0'
+            id: 0193a1f2-6c1e-7b3a-9f2d-4c8e1a2b3c4d
+            source: /core/7d3f2c9e
+            type: io.github.romdev-hub.ev-arm.phase.changed
+            time: '2026-11-12T08:40:00.125Z'
+            sequence: '00000000000000004211'
+            data:
+              previous: S11_INSERT
+              phase: RETRY_INSERT
+              code: fsm.retry_insert.force_over
+              params:
+                attempt: 1
+                max_attempts: 3
+              expected_next: S11_INSERT
+    motionBlocked:
+      name: motionBlocked
+      title: Lệnh chuyển động bị chặn
+      summary: Bộ kiểm segment từ chối một lệnh chuyển động.
+      payload:
+        $ref: '#/components/schemas/MotionBlocked'
+    faultRaised:
+      name: faultRaised
+      title: Lỗi
+      summary: Một lỗi vừa xảy ra trong core, port hay adapter.
+      description: |-
+        Loại lỗi hay cảnh báo của mã tra trong danh mục mã lỗi, không gửi kèm thông điệp. Lỗi đang chốt và việc gỡ chốt nằm trong telemetry (REQ-HAL-005).
+      payload:
+        $ref: '#/components/schemas/FaultRaised'
+    supervisionChanged:
+      name: supervisionChanged
+      title: Đổi mức giám sát
+      summary: Mức giám sát vừa đổi.
+      description: |-
+        Mức giám sát là trạng thái vận hành của phần mềm, không phải chức năng an toàn (ADR 0005, REQ-MIS-011).
+      payload:
+        $ref: '#/components/schemas/SupervisionChanged'
+    commandLifecycle:
+      name: commandLifecycle
+      title: Vòng đời lệnh
+      summary: Một lệnh REST vừa đổi trạng thái.
+      description: |-
+        | Trạng thái | Nghĩa | Trạng thái kế |
+        | --- | --- | --- |
+        | `pending` | `core` đã nhận lệnh và cấp `command_id`, chưa xét | `accepted`, `rejected`, `timed-out` |
+        | `accepted` | lệnh qua kiểm tham số, kiểm quyền và kiểm trạng thái | `completed`, `timed-out` |
+        | `rejected` | lệnh bị từ chối; `code` là mã của problem details trả cho lệnh đó (REQ-GW-014, REQ-GW-015) | kết thúc |
+        | `timed-out` | hết thời hạn của lệnh mà chưa tới trạng thái kết thúc; `code` là `cmd.timed_out` | kết thúc |
+        | `completed` | tác dụng của lệnh đã xảy ra trên thiết bị hay trong máy trạng thái; `code` là mã kết quả `cmd.*` (REQ-GW-013) | kết thúc |
+
+        Client gắn sự kiện với lệnh đã gửi qua `data.command_id`, giá trị mà route REST trả khi nhận lệnh (REQ-GW-007).
+      correlationId:
+        description: ID của lệnh, do route REST trả khi nhận lệnh.
+        location: $message.payload#/data/command_id
+      payload:
+        $ref: '#/components/schemas/CommandLifecycle'
+      examples:
+        - name: rejectedOutsideIdle
+          summary: Lệnh bắt đầu phiên bị từ chối vì máy không ở S0_IDLE.
+          payload:
+            specversion: '1.0'
+            id: 0193a1f2-7d20-7c41-8e10-5b9f2a3c4d5e
+            source: /core/7d3f2c9e
+            type: io.github.romdev-hub.ev-arm.command.lifecycle
+            time: '2026-11-12T08:41:03.502Z'
+            sequence: '00000000000000004387'
+            data:
+              command_id: c-000128
+              command: start_session
+              state: rejected
+              code: cmd.session.not_idle
+              params:
+                phase: S15_CHARGING
+  schemas:
+    Envelope:
+      type: object
+      description: Envelope theo CloudEvents 1.0, chung cho mọi thông điệp của kênh.
+      required:
+        - specversion
+        - id
+        - source
+        - type
+        - time
+        - sequence
+        - data
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+          description: Phiên bản CloudEvents.
+        id:
+          type: string
+          minLength: 1
+          description: Định danh của thông điệp, duy nhất trong phạm vi `source`.
+        source:
+          type: string
+          format: uri-reference
+          pattern: ^/core/[^/]+$
+          description: '`/core/` cộng ID phiên chạy của `core` (REQ-REC-013).'
+        type:
+          type: string
+          minLength: 1
+          description: Loại thông điệp, tiền tố `io.github.romdev-hub.ev-arm.`.
+        time:
+          type: string
+          format: date-time
+          description: Thời điểm xảy ra theo RFC 3339, giờ UTC của host.
+        sequence:
+          type: string
+          pattern: ^[0-9]{20}$
+          description: Thứ tự của thông điệp trong phạm vi `source`, 20 chữ số thập phân, tăng 1 sau mỗi thông điệp.
+        data:
+          type: object
+    TelemetrySnapshot:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: io.github.romdev-hub.ev-arm.telemetry.snapshot
+            data:
+              $ref: '#/components/schemas/TelemetryData'
+    PhaseChanged:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: io.github.romdev-hub.ev-arm.phase.changed
+            data:
+              $ref: '#/components/schemas/PhaseChangedData'
+    MotionBlocked:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: io.github.romdev-hub.ev-arm.motion.blocked
+            data:
+              $ref: '#/components/schemas/MotionBlockedData'
+    FaultRaised:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: io.github.romdev-hub.ev-arm.fault.raised
+            data:
+              $ref: '#/components/schemas/FaultRaisedData'
+    SupervisionChanged:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: io.github.romdev-hub.ev-arm.supervision.changed
+            data:
+              $ref: '#/components/schemas/SupervisionChangedData'
+    CommandLifecycle:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: io.github.romdev-hub.ev-arm.command.lifecycle
+            data:
+              $ref: '#/components/schemas/CommandLifecycleData'
+    Code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$
+      description: Mã ổn định; mã lỗi và cảnh báo lấy từ `contracts/schemas/error-codes.schema.json` (REQ-I18N-004).
+    Params:
+      type: object
+      description: Tham số của mã, khoá viết snake_case; câu hiển thị thay tham số vào câu của mã trong locale (REQ-I18N-004).
+      additionalProperties: true
+    Phase:
+      type: string
+      description: Trạng thái của máy trạng thái mission (REQ-MIS-001).
+      enum:
+        - BOOT
+        - S0_IDLE
+        - S1_VEHICLE_APPROACHING
+        - S2_VEHICLE_SETTLING
+        - DRIVER_EGRESS
+        - BAY_CLEAR
+        - S3_IDENTIFYING
+        - S4_SESSION_AUTHORIZING
+        - S5_LID_REQUEST
+        - S6_PRECHECK
+        - S7_ARM_TRANSIT
+        - S8_PORT_SEARCH
+        - S9_PORT_REFINE
+        - S10_ALIGN
+        - S11_INSERT
+        - S12_SEAT_VERIFY
+        - S13_LOCK
+        - S14_HANDSHAKE
+        - S15_CHARGING
+        - S16_STOPPING
+        - S17_UNLOCK_WAIT
+        - S18_EXTRACT
+        - S19_RETRACT_STOW
+        - S20_POST_CHARGE
+        - S21_VEHICLE_DEPARTING
+        - SAFE_HOLD
+        - RETRY_SEARCH
+        - RETRY_INSERT
+        - ABORT_UNPLUG
+        - ABORT_RETRACT
+        - CONNECTOR_STUCK
+        - SAFE_STOP
+        - HUMAN_PRESENT_PAUSE
+        - WEATHER_HOLD
+        - CALIBRATION_BLOCKED
+        - MAINTENANCE
+        - SESSION_FAILED
+    SupervisionLevel:
+      type: string
+      description: Mức giám sát (REQ-MIS-073).
+      enum:
+        - OK
+        - SLOW
+        - HOLD
+        - STOP
+        - ESTOP
+    CommandState:
+      type: string
+      description: Trạng thái trong vòng đời của một lệnh REST.
+      enum:
+        - pending
+        - accepted
+        - rejected
+        - timed-out
+        - completed
+    PhaseNote:
+      type: object
+      description: Mã lý do và tham số của lần chuyển pha gần nhất (REQ-MIS-004).
+      required:
+        - code
+        - params
+      properties:
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+    PhaseChangedData:
+      type: object
+      required:
+        - previous
+        - phase
+        - code
+        - params
+        - expected_next
+      properties:
+        previous:
+          $ref: '#/components/schemas/Phase'
+        phase:
+          $ref: '#/components/schemas/Phase'
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+        expected_next:
+          $ref: '#/components/schemas/Phase'
+    MotionBlockedData:
+      type: object
+      required:
+        - code
+        - params
+      properties:
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+        origin:
+          type: string
+          description: Nguồn của lệnh bị chặn (REQ-MOT-015).
+          enum:
+            - auto
+            - jog
+            - home
+    FaultRaisedData:
+      type: object
+      required:
+        - code
+        - params
+      properties:
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+    SupervisionChangedData:
+      type: object
+      required:
+        - level
+        - previous
+      properties:
+        level:
+          $ref: '#/components/schemas/SupervisionLevel'
+        previous:
+          $ref: '#/components/schemas/SupervisionLevel'
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+      if:
+        properties:
+          level:
+            const: OK
+      else:
+        required:
+          - code
+    CommandLifecycleData:
+      type: object
+      required:
+        - command_id
+        - command
+        - state
+      properties:
+        command_id:
+          type: string
+          minLength: 1
+          description: ID mà route REST trả khi nhận lệnh; dạng ID chưa chốt (REQ-GW-025, đề xuất).
+        command:
+          type: string
+          pattern: ^[a-z][a-z0-9_]*$
+          description: Tên lệnh, ví dụ `start_session`.
+        state:
+          $ref: '#/components/schemas/CommandState'
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+      if:
+        properties:
+          state:
+            enum:
+              - rejected
+              - timed-out
+              - completed
+      then:
+        required:
+          - code
+    BlockUnavailable:
+      type: object
+      description: Khối telemetry không dựng được (REQ-GW-017).
+      required:
+        - unavailable
+        - code
+      properties:
+        unavailable:
+          const: true
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+    OpenBlock:
+      type: object
+      description: Khối telemetry mà nội dung chi tiết do requirement của vùng sở hữu quy định; schema chi tiết chưa viết.
+      additionalProperties: true
+    TelemetryData:
+      type: object
+      description: Các khối của telemetry (REQ-GW-016); khối nào không dựng được thì là `BlockUnavailable`.
+      required:
+        - data_origin
+        - phase
+        - safe_hold
+        - supervision
+        - session
+        - lot
+        - motion
+        - devices
+        - perception
+        - sim_faults
+        - health
+        - build
+      properties:
+        data_origin:
+          type: string
+          description: Số liệu đo từ thiết bị thật hay từ adapter mô phỏng.
+          enum:
+            - measured
+            - simulated
+        phase:
+          anyOf:
+            - $ref: '#/components/schemas/PhaseBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        safe_hold:
+          anyOf:
+            - $ref: '#/components/schemas/SafeHoldBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        supervision:
+          anyOf:
+            - $ref: '#/components/schemas/SupervisionBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        session:
+          description: Phiên sạc của bay đang phục vụ (REQ-HAL-037).
+          anyOf:
+            - $ref: '#/components/schemas/OpenBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        lot:
+          description: Bãi, trạng thái từng bay, hàng đợi điều phối và danh mục xe (REQ-MIS-077, REQ-MIS-078).
+          anyOf:
+            - $ref: '#/components/schemas/OpenBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        motion:
+          description: Chuyển động, động học và mô-men (REQ-MOT-011, REQ-MOT-012, REQ-ARM-026).
+          anyOf:
+            - $ref: '#/components/schemas/OpenBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        devices:
+          description: Health và số đo của các port ArmPort, Rail, Io, Presence, Force và Evse (REQ-HAL-005, REQ-HAL-024).
+          anyOf:
+            - $ref: '#/components/schemas/OpenBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        perception:
+          description: Camera và perception (REQ-PER-007, REQ-PER-048).
+          anyOf:
+            - $ref: '#/components/schemas/OpenBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        sim_faults:
+          anyOf:
+            - $ref: '#/components/schemas/SimFaultsBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        health:
+          description: Tình trạng của cấu hình trạm, bản ghi MCAP và log (REQ-CFG-005).
+          anyOf:
+            - $ref: '#/components/schemas/OpenBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+        build:
+          anyOf:
+            - $ref: '#/components/schemas/BuildBlock'
+            - $ref: '#/components/schemas/BlockUnavailable'
+    PhaseBlock:
+      type: object
+      description: Pha hiện tại và lần chuyển pha gần nhất (REQ-MIS-004).
+      required:
+        - phase
+        - previous
+        - expected_next
+        - since_s
+        - note
+      properties:
+        phase:
+          $ref: '#/components/schemas/Phase'
+        previous:
+          $ref: '#/components/schemas/Phase'
+        expected_next:
+          $ref: '#/components/schemas/Phase'
+        since_s:
+          type: number
+          minimum: 0
+          description: Thời gian đã ở pha hiện tại (s), đo bằng đồng hồ monotonic.
+        note:
+          $ref: '#/components/schemas/PhaseNote'
+    SafeHoldBlock:
+      type: object
+      description: Trạng thái SAFE_HOLD, cùng kết quả đánh giá mà FSM dùng (REQ-MIS-016).
+      required:
+        - active
+        - passed
+        - failed
+        - acknowledged
+        - connector_in_inlet
+      properties:
+        active:
+          type: boolean
+        reason:
+          type:
+            - string
+            - 'null'
+          description: Lý do giữ, ví dụ `boot` hay `fault` (REQ-MIS-010, REQ-MIS-013).
+        passed:
+          type: array
+          description: Mục `chk.*` đạt.
+          items:
+            $ref: '#/components/schemas/Code'
+        failed:
+          type: array
+          description: Mục `chk.*` trượt.
+          items:
+            $ref: '#/components/schemas/Code'
+        acknowledged:
+          type: boolean
+          description: Đã có lệnh xác nhận của người hay chưa (REQ-MIS-020).
+        connector_in_inlet:
+          type: boolean
+          description: Cờ nghi đầu sạc trong cổng (REQ-MIS-014, REQ-MIS-023).
+        connector_reason:
+          oneOf:
+            - $ref: '#/components/schemas/Code'
+            - type: 'null'
+          description: Lý do của cờ, mã `safehold.*` lúc khởi động (REQ-MIS-014).
+    SupervisionBlock:
+      type: object
+      description: Mức giám sát và khoảng hở (REQ-MIS-073, REQ-MOT-022).
+      required:
+        - level
+        - speed_factor
+      properties:
+        level:
+          $ref: '#/components/schemas/SupervisionLevel'
+        speed_factor:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Hệ số tốc độ của mức giám sát.
+        code:
+          $ref: '#/components/schemas/Code'
+        params:
+          $ref: '#/components/schemas/Params'
+        person_clearance_m:
+          type:
+            - number
+            - 'null'
+          description: Khoảng cách tới người gần nhất (m); `null` khi không có số đo.
+        body_clearance_m:
+          type:
+            - number
+            - 'null'
+          description: Khoảng hở nhỏ nhất giữa tay máy cùng thân đầu sạc và vỏ bao xe (m); `null` khi không tính được.
+    SimFaultsBlock:
+      type: object
+      description: Lỗi giả lập đang bật (REQ-SIM-016); luôn rỗng khi chạy với adapter thật.
+      required:
+        - active
+      properties:
+        active:
+          type: array
+          items:
+            type: object
+            required:
+              - fault
+              - name
+              - code
+              - remaining_s
+            properties:
+              fault:
+                type: string
+                description: Mã lỗi giả lập trong danh mục lỗi giả lập (REQ-SIM-016).
+              name:
+                type: string
+                description: Tên lỗi giả lập, ví dụ `CAMERA_DROPOUT`.
+              code:
+                $ref: '#/components/schemas/Code'
+              remaining_s:
+                type: number
+                minimum: 0
+                description: Thời gian còn lại của lỗi (s), theo đồng hồ mà FSM dùng.
+    BuildBlock:
+      type: object
+      description: Phiên bản đang chạy.
+      required:
+        - version
+        - commit
+      properties:
+        version:
+          type: string
+          description: Phiên bản SemVer của bản đang chạy (ADR 0009).
+        commit:
+          type: string
+          description: Commit của bản đang chạy.
