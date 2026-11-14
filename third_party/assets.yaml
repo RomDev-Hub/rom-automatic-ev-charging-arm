@@ -1,0 +1,16 @@
+# Tài sản không phải code mà repo dùng, kèm nguồn, giấy phép và cờ nc (ADR 0010, ADR 0011).
+# nc: true nghĩa là tài sản chỉ được dùng cho mục đích phi thương mại.
+assets:
+  - name: Universal_Robots_ROS2_Description
+    source: https://github.com/UniversalRobots/Universal_Robots_ROS2_Description
+    tag: "4.4.1"
+    commit: "0eb1a861f7772fceb38510d90fa2f98ec668070c"
+    license: BSD-3-Clause
+    license_file: third_party/licenses/universal-robots-ros2-description.txt
+    nc: false
+    derived:
+      - path: robot-core/src/robot_core/defaults/arms/ur10e/model.urdf
+        how: chép urdf/ và config/ của gói vào /tmp/ur_description, thay $(find ur_description) bằng đường dẫn đó, rồi chạy xacro 2.1.1 (PyYAML 6.0.3) trên urdf/ur.urdf.xacro với ur_type:=ur10e name:=ur10e và tham số mặc định của gói; file giữ nguyên đầu ra của xacro
+      - path: robot-core/src/robot_core/defaults/arms/ur10e/spec.yaml
+        how: giới hạn vị trí, tốc độ và mô-men của các khớp lấy từ config/ur10e/joint_limits.yaml
+    note: phần visual và collision của model.urdf trỏ tới mesh trong meshes/ của gói; file mesh không nằm trong repo

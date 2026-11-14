@@ -177,7 +177,7 @@ components:
         | Trạng thái | Nghĩa | Trạng thái kế |
         | --- | --- | --- |
         | `pending` | `core` đã nhận lệnh và cấp `command_id`, chưa xét | `accepted`, `rejected`, `timed-out` |
-        | `accepted` | lệnh qua kiểm tham số, kiểm quyền và kiểm trạng thái | `completed`, `timed-out` |
+        | `accepted` | lệnh qua kiểm tham số, kiểm quyền và kiểm trạng thái | `completed`, `rejected` (lỗi nội bộ khi thực hiện lệnh, REQ-GW-015), `timed-out` |
         | `rejected` | lệnh bị từ chối; `code` là mã của problem details trả cho lệnh đó (REQ-GW-014, REQ-GW-015) | kết thúc |
         | `timed-out` | hết thời hạn của lệnh mà chưa tới trạng thái kết thúc; `code` là `cmd.timed_out` | kết thúc |
         | `completed` | tác dụng của lệnh đã xảy ra trên thiết bị hay trong máy trạng thái; `code` là mã kết quả `cmd.*` (REQ-GW-013) | kết thúc |
@@ -348,6 +348,11 @@ components:
         - CALIBRATION_BLOCKED
         - MAINTENANCE
         - SESSION_FAILED
+    ExpectedNext:
+      description: Trạng thái kỳ vọng kế tiếp (REQ-MIS-005); `null` khi danh mục trạng thái của bản đang chạy chưa có trạng thái kế cho trạng thái hiện tại.
+      oneOf:
+        - $ref: '#/components/schemas/Phase'
+        - type: 'null'
     SupervisionLevel:
       type: string
       description: Mức giám sát (REQ-MIS-073).
@@ -395,7 +400,7 @@ components:
         params:
           $ref: '#/components/schemas/Params'
         expected_next:
-          $ref: '#/components/schemas/Phase'
+          $ref: '#/components/schemas/ExpectedNext'
     MotionBlockedData:
       type: object
       required:
@@ -580,7 +585,7 @@ components:
         previous:
           $ref: '#/components/schemas/Phase'
         expected_next:
-          $ref: '#/components/schemas/Phase'
+          $ref: '#/components/schemas/ExpectedNext'
         since_s:
           type: number
           minimum: 0

@@ -1,0 +1,2 @@
+# Cấu hình ruff chung của repo; thiếu file này, file Python ngoài robot-core/ sẽ lấy cấu hình ruff riêng của từng máy.
+line-length = 88

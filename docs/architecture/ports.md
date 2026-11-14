@@ -44,7 +44,7 @@ Giao chuyển động của tay máy cho controller dưới dạng segment và �
 
 | Thao tác | Tham số, đơn vị và khung | Requirement |
 | --- | --- | --- |
-| segment moveJ | đích khớp (rad); vận tốc (rad/s) và gia tốc (rad/s²) của khớp dẫn | REQ-HAL-009 |
+| segment moveJ (`JointSegment`) | đích khớp (rad); vận tốc (rad/s) và gia tốc (rad/s²) của khớp dẫn; mọi khớp cùng bắt đầu và cùng tới đích | REQ-HAL-009 |
 | segment moveL | đích TCP trong khung `base`, vị trí (m) và hướng (rad); vận tốc (m/s) và gia tốc (m/s²) của tool | REQ-HAL-009 |
 | segment force mode | đẩy dọc trục cổng sạc tới lực đặt (N), nhường theo lực ở các trục còn lại; dùng cho cắm (lực chạm đáy mặc định 35 N) và spiral search (mặc định bán kính tăng 1,6 mm mỗi rad, tốc độ góc 3,0 rad/s, bán kính tối đa 12 mm); khung tác vụ khai trong khung `base` | REQ-HAL-009, REQ-MOT-007, REQ-MOT-008 |
 | dừng | dừng segment đang chạy bằng lệnh dừng có giảm tốc của controller và giữ tư thế đo được; yêu cầu dừng từ lệnh Dừng còn dừng chương trình trên controller và dừng ray | REQ-HAL-021 |
@@ -171,7 +171,7 @@ Adapter: `realsense/` cấp luồng màu và nội tham số của camera cổ t
 
 ## Chưa chốt
 
-- Dạng dữ liệu của một segment, kể cả segment force mode, và dạng biểu diễn hướng trong tư thế Descartes của port; hướng dẫn RTDE của UR báo hướng TCP bằng vector quay (ADR 0004).
+- Dạng dữ liệu của segment moveL và segment force mode, và dạng biểu diễn hướng trong tư thế Descartes của port; hướng dẫn RTDE của UR báo hướng TCP bằng vector quay (ADR 0004).
 - Khung của phép đo ở port Force: hướng dẫn RTDE của UR mô tả `actual_TCP_force` là lực tổng quát tại TCP mà không nêu khung; kiểm với URSim hoặc controller thật trước khi viết adapter.
 - Tiêu chí của bộ kiểm segment, ngưỡng của bộ giám sát tiến trình, cách controller dừng segment khi mất liên lạc với host (REQ-MOT-033, đề xuất), và dữ liệu nào đặt vào thanh ghi nào trong dải 24–47 (ADR 0004).
 - Lệnh jog có deadman đi qua ArmPort ở dạng nào (ADR 0004, ADR 0006).

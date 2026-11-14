@@ -1,0 +1,554 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "robot-core REST API",
+    "version": "0.1.0-draft"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Read Health",
+        "description": "Answer 200 while every health check passes, else 503 naming the failing.\n\nThe checks: the supervision loop ticked within the last second, the arm port\nis connected with fresh data and no latched fault, and the kinematics library\nis loaded. No session is needed and no operating data is returned\n(REQ-GW-023).",
+        "operationId": "read_health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`err.not_ready`: System not ready",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/session": {
+      "get": {
+        "summary": "Read Session",
+        "description": "The account and roles of the current session.",
+        "operationId": "read_session_api_session_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`err.auth.required`: Not signed in or the session has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Open Session",
+        "description": "Log in, and receive the session cookie.\n\nThe cookie is Secure, HttpOnly and SameSite=Strict, with a new identifier\neach time (REQ-AUTH-004). Credentials travel in the body, never in the URL\n(REQ-AUTH-005).",
+        "operationId": "open_session_api_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`err.auth.invalid_credentials`: Incorrect username or password",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`cmd.bad_params`: Command parameters missing, mistyped or out of range",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Close Session",
+        "description": "Log out: the session ends on the server and the cookie is cleared.",
+        "operationId": "close_session_api_session_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "`err.auth.required`: Not signed in or the session has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/commands/stop": {
+      "post": {
+        "summary": "Stop",
+        "description": "Stop: the arm stops at once, then the machine enters SAFE_STOP.\n\nAn operational stop through software, not a safety function: the safety\nfunctions are hardware (ADR 0005, REQ-MIS-066). Only a restart leaves\nSAFE_STOP until the resume command exists.",
+        "operationId": "stop_api_commands_stop_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`err.auth.required`: Not signed in or the session has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`err.internal`: Internal system error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/telemetry": {
+      "get": {
+        "summary": "Read Telemetry",
+        "description": "The latest telemetry snapshot, as pushed on /api/ws (REQ-GW-019).",
+        "operationId": "read_telemetry_api_telemetry_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`err.auth.required`: Not signed in or the session has expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`err.not_ready`: System not ready",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BlockUnavailable": {
+        "properties": {
+          "unavailable": {
+            "type": "boolean",
+            "const": true,
+            "title": "Unavailable",
+            "default": true
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "default": "err.telemetry.block_unavailable"
+          }
+        },
+        "type": "object",
+        "title": "BlockUnavailable",
+        "description": "A block that could not be built (REQ-GW-017)."
+      },
+      "CommandResult": {
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "title": "Command Id",
+            "description": "Tags the command's lifecycle messages on /api/ws (REQ-GW-007)."
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase",
+            "description": "Mission phase once the command was handled."
+          }
+        },
+        "type": "object",
+        "required": [
+          "command_id",
+          "command",
+          "code",
+          "params",
+          "phase"
+        ],
+        "title": "CommandResult",
+        "description": "Result of a command the core carried out (REQ-GW-013)."
+      },
+      "Credentials": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Credentials"
+      },
+      "HealthReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthReport",
+        "description": "Every health check passes."
+      },
+      "Phase": {
+        "type": "string",
+        "enum": [
+          "BOOT",
+          "SAFE_HOLD",
+          "S0_IDLE",
+          "SAFE_STOP"
+        ],
+        "title": "Phase",
+        "description": "Phases of the mission state machine, named as in contracts/asyncapi.yaml."
+      },
+      "PhaseBlock": {
+        "properties": {
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "expected_next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Phase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "since_s": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Since S",
+            "description": "Time in the current phase (s), on the monotonic clock."
+          },
+          "note": {
+            "$ref": "#/components/schemas/PhaseNote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "previous",
+          "expected_next",
+          "since_s",
+          "note"
+        ],
+        "title": "PhaseBlock",
+        "description": "Current phase and the latest phase change (REQ-MIS-004)."
+      },
+      "PhaseNote": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "params"
+        ],
+        "title": "PhaseNote",
+        "description": "Reason code and parameters of the latest phase change."
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "operator",
+          "maintainer",
+          "admin"
+        ],
+        "title": "Role",
+        "description": "Account roles of docs/requirements/gateway-config-data.md."
+      },
+      "SessionInfo": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "roles"
+        ],
+        "title": "SessionInfo",
+        "description": "The account of the session, without any secret (REQ-AUTH-008)."
+      },
+      "TelemetryData": {
+        "properties": {
+          "data_origin": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "simulated"
+            ],
+            "title": "Data Origin"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseBlock"
+              },
+              {
+                "$ref": "#/components/schemas/BlockUnavailable"
+              }
+            ],
+            "title": "Phase"
+          },
+          "safe_hold": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "supervision": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "session": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "lot": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "motion": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "devices": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "perception": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "sim_faults": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "health": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          },
+          "build": {
+            "$ref": "#/components/schemas/BlockUnavailable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_origin",
+          "phase",
+          "safe_hold",
+          "supervision",
+          "session",
+          "lot",
+          "motion",
+          "devices",
+          "perception",
+          "sim_faults",
+          "health",
+          "build"
+        ],
+        "title": "TelemetryData",
+        "description": "One telemetry snapshot (REQ-GW-016), alike on /api/ws and over REST."
+      },
+      "ProblemCode": {
+        "description": "Catalogue codes the gateway answers with.",
+        "enum": [
+          "err.auth.required",
+          "err.auth.invalid_credentials",
+          "err.not_found",
+          "err.internal",
+          "err.not_ready",
+          "cmd.bad_params",
+          "cmd.unknown"
+        ],
+        "title": "ProblemCode",
+        "type": "string"
+      },
+      "Problem": {
+        "description": "Problem details (RFC 9457) with the catalogue code and its parameters.",
+        "properties": {
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "code": {
+            "$ref": "#/components/schemas/ProblemCode"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "title",
+          "code",
+          "params"
+        ],
+        "title": "Problem",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-id"
+      }
+    }
+  }
+}

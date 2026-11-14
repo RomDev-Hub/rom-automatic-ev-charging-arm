@@ -57,10 +57,10 @@ Chọn A1, B1, C1, D1 và E1, vì:
 
 **Model có sẵn.** Danh sách bắt đầu với UR5e, UR10e, UR16e, UR20 và UR30. Mỗi model một thư mục `robot-core/src/robot_core/defaults/arms/<model>/` gồm:
 
-- `model.urdf`, sinh bằng xacro từ `urdf/ur.urdf.xacro` của gói mô tả chính hãng [Universal_Robots_ROS2_Description](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description), ghim tag [`4.4.1`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description/tree/4.4.1), commit [`0eb1a861f7772fceb38510d90fa2f98ec668070c`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description/commit/0eb1a861f7772fceb38510d90fa2f98ec668070c), giấy phép BSD-3-Clause, với tham số mặc định của gói (`default_kinematics.yaml`, `physical_parameters.yaml`, `joint_limits.yaml` trong thư mục `config/` của model đó);
-- `spec.yaml`: tầm với, tải, giới hạn khớp và tốc độ, adapter ArmPort dùng cho model.
+- `model.urdf`, sinh bằng xacro từ `urdf/ur.urdf.xacro` của gói mô tả chính hãng [Universal_Robots_ROS2_Description](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description), ghim tag [`4.4.1`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description/tree/4.4.1), commit [`0eb1a861f7772fceb38510d90fa2f98ec668070c`](https://github.com/UniversalRobots/Universal_Robots_ROS2_Description/commit/0eb1a861f7772fceb38510d90fa2f98ec668070c), giấy phép BSD-3-Clause, với tham số mặc định của gói (`default_kinematics.yaml`, `physical_parameters.yaml`, `joint_limits.yaml` trong thư mục `config/` của model đó), giữ nguyên đầu ra của xacro, kể cả phần visual và collision trỏ tới mesh của gói: Pinocchio chỉ đọc cây khớp và quán tính, còn tham chiếu mesh không kéo file mesh nào vào repo;
+- `spec.yaml`: tầm với và tải theo bảng thông số kỹ thuật của UR, adapter ArmPort dùng cho model, cùng giới hạn vị trí, tốc độ và mô-men của các khớp lấy từ `joint_limits.yaml` của gói, nên bằng đúng giới hạn trong `model.urdf`.
 
-URDF sinh ra được kê trong `third_party/assets.yaml` cùng nguồn và giấy phép, văn bản BSD-3-Clause nằm trong `third_party/licenses/` (ADR 0010, ADR 0011). Mesh dùng cho twin 3D kiểm giấy phép riêng và có `nc: true` nếu chỉ được dùng cho mục đích phi thương mại (ADR 0011).
+URDF sinh ra được kê trong `third_party/assets.yaml` cùng nguồn, giấy phép và cách sinh, gồm phiên bản xacro và PyYAML đã dùng; văn bản BSD-3-Clause nằm trong `third_party/licenses/` (ADR 0010, ADR 0011). Mesh dùng cho twin 3D kiểm giấy phép riêng và có `nc: true` nếu chỉ được dùng cho mục đích phi thương mại (ADR 0011).
 
 **Model custom.** Model custom được khai trong cài đặt và lưu trong volume `ev-arm-config` (ADR 0007).
 
@@ -194,9 +194,8 @@ Khối lượng, trọng tâm và ma trận quán tính của từng khâu lấy
   - [OWASP XML External Entity Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html): tấn công qua thực thể ngoài và mở rộng thực thể khi parse XML không tin cậy.
 - Chưa quyết định:
   - UR20 dùng khối lượng và trọng tâm khâu wrist_3 theo gói hay theo bài DH của UR, và test mô-men trọng lực đối chiếu với nguồn nào; chốt trước khi thêm UR20 vào `defaults/arms/`.
-  - Giới hạn khớp và tốc độ trong `spec.yaml` lấy từ đâu khi `model.urdf` đã chứa giới hạn từ `joint_limits.yaml` của gói, và chúng liên hệ thế nào với application limits ở ADR 0005.
-  - Lệnh hoặc script sinh `model.urdf`, phiên bản xacro được ghim, và có kiểm tự động rằng sinh lại từ commit đã ghim cho đúng file trong repo hay không.
-  - `model.urdf` giữ hay bỏ phần visual và collision trỏ tới mesh của gói; chốt cùng quyết định về mesh cho twin 3D (ADR 0010, ADR 0011).
+  - Giới hạn trong `spec.yaml` liên hệ thế nào với application limits ở ADR 0005.
+  - Lệnh hay script sinh `model.urdf`, và có kiểm tự động rằng sinh lại từ commit đã ghim cho đúng file trong repo hay không; hiện cách sinh chỉ được ghi bằng lời trong `third_party/assets.yaml`.
   - Định dạng gói hiệu chuẩn động học mà controller gửi qua cổng 30011 và cách áp vào model; kiểm trên controller thật trước khi viết phần đọc gói này.
   - Bảng DH của model custom theo quy ước DH chuẩn hay DH cải tiến, số khớp được nhận, giới hạn kích thước file URDF, và dạng lưu model custom trong `ev-arm-config`.
   - Danh sách chức năng cần động lực học, bị tắt khi model thiếu quán tính, và cách cộng tải của tool vào mô-men trọng lực.
