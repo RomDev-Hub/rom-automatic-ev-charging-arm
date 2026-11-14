@@ -45,6 +45,13 @@ repos:
     rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
+  # Kiểm Dockerfile bằng hadolint chạy trong Docker, nên máy không phải cài hadolint.
+  # entry gốc của hook gọi image không kèm tag (tức latest), nên entry ở đây ghim image theo tag và digest; nâng rev thì nâng cả entry.
+  - repo: https://github.com/hadolint/hadolint
+    rev: 2eece55955ced00200be9729e9728cb7dacca505  # frozen: v2.15.1
+    hooks:
+      - id: hadolint-docker
+        entry: ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d hadolint
   # Lint và định dạng bằng ruff, cùng bản với ruff trong robot-core/uv.lock; cấu hình chung ở ruff.toml của gốc repo.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: c0f278f1254ccc8fb09676bcdb8d847e7db493e5  # frozen: v0.17.4
@@ -68,6 +75,34 @@ repos:
         language: python
         pass_filenames: false
         always_run: true
+      # ESLint, Prettier và kiểm kiểu của operator-ui, cùng bản với dependency trong pnpm-lock.yaml; cấu hình nằm trong operator-ui/.
+      # Mỗi hook chạy trên cả package, vì luật kiểu của ESLint và tsc cần toàn bộ dự án.
+      - id: eslint-operator-ui
+        name: eslint (operator-ui)
+        entry: pnpm --filter operator-ui run lint
+        language: system
+        files: ^operator-ui/
+        pass_filenames: false
+      - id: prettier-operator-ui
+        name: prettier (operator-ui)
+        entry: pnpm --filter operator-ui run format:check
+        language: system
+        files: ^operator-ui/
+        pass_filenames: false
+      - id: typecheck-operator-ui
+        name: typecheck (operator-ui)
+        entry: pnpm --filter operator-ui run typecheck
+        language: system
+        # Mã của operator-ui import hai file locale của robot-core.
+        files: ^(operator-ui/|robot-core/src/robot_core/locales/)
+        pass_filenames: false
+      # Kiểu TypeScript trong operator-ui/src/shared/contracts/ phải đúng như sinh lại từ contracts/; lệch thì chạy `pnpm --filter operator-ui run contracts`.
+      - id: contract-types-operator-ui
+        name: contract types up to date (operator-ui)
+        entry: pnpm --filter operator-ui run contracts:check
+        language: system
+        files: ^(contracts/|operator-ui/)
+        pass_filenames: false
       - id: commitlint
         name: commitlint
         entry: pnpm exec commitlint --edit  # luật nằm trong commitlint.config.mjs

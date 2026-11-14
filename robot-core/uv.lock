@@ -1,9 +1,16 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15'",
     "python_full_version < '3.15'",
+]
+
+[manifest]
+build-constraints = [
+    { name = "pybind11", specifier = "==3.1.0" },
+    { name = "setuptools", specifier = "==84.2.1" },
+    { name = "setuptools-scm", specifier = "==10.3.4" },
 ]
 
 [[package]]
@@ -998,6 +1005,7 @@ dependencies = [
     { name = "mcap" },
     { name = "numpy" },
     { name = "pin", marker = "sys_platform == 'linux'" },
+    { name = "ur-rtde", marker = "sys_platform == 'linux'" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1016,6 +1024,7 @@ requires-dist = [
     { name = "mcap", specifier = ">=1.6.0" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pin", marker = "sys_platform == 'linux'", specifier = ">=4.1.0" },
+    { name = "ur-rtde", marker = "sys_platform == 'linux'", specifier = "==1.6.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -1084,6 +1093,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/ff/50/0195198eb1d75bab7
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/0c/ea2544850a7c135e15033a5c7a8e7211136184b7ae63e2239d557c2b3019/typing_inspection-0.4.5-py3-none-any.whl", hash = "sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39", size = 14874, upload-time = "2026-11-04T14:13:22.616Z" },
 ]
+
+[[package]]
+name = "ur-rtde"
+version = "1.6.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/11/5f3dc66a5ba608830ffa83bdaa8808562172b6332f8aaf9bdafeb22e2df2/ur_rtde-1.6.5.tar.gz", hash = "sha256:3d5b6c6bf73346b806d146f128537abd2afb1d769f4a9c8b3ef5a884fab0bcfa", size = 3428886, upload-time = "2026-08-09T07:52:33.765Z" }
 
 [[package]]
 name = "uvicorn"

@@ -1,0 +1,48 @@
+# Caddy của service hmi: phục vụ bản build của operator-ui qua HTTPS và chuyển /api, gồm cả kênh WSS /api/ws, tới service core (ADR 0006, REQ-DEP-003).
+{
+	# Không mở admin API: cấu hình chỉ đổi theo image.
+	admin off
+	persist_config off
+	# Cổng không đặc quyền, để chạy bằng user không phải root với cap_drop: ALL; Compose ánh xạ cổng 443 của host vào 8443.
+	http_port 8080
+	https_port 8443
+	# Không có cổng HTTP mở ra ngoài nên không cần chuyển hướng sang HTTPS.
+	auto_https disable_redirects
+	# Stack sim và dev dùng CA nội bộ của Caddy; chứng chỉ của thiết bị chốt cùng compose.production.yaml (ADR 0007).
+	skip_install_trust
+	# Trình duyệt mở bằng địa chỉ IP thì không gửi SNI; khi đó dùng chứng chỉ của 127.0.0.1.
+	default_sni 127.0.0.1
+	servers {
+		protocols h1 h2
+	}
+}
+
+# Stack sim và dev chỉ mở cổng của hmi trên loopback (REQ-DEP-010), nên chỉ cần hai tên này.
+localhost, 127.0.0.1 {
+	tls internal
+
+	handle /api/* {
+		reverse_proxy {$EV_ARM_CORE_URL:http://core:8000}
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+		# Trình duyệt chỉ tải tài nguyên từ chính service hmi (REQ-HMI-010).
+		header {
+			Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+		}
+		# Trang gốc luôn được kiểm lại, để sau khi đổi image trình duyệt nạp đúng bản build mới.
+		@page path / /index.html
+		header @page Cache-Control no-cache
+		file_server
+	}
+}
+
+# Healthcheck của container: Caddy tự trả lời, chỉ nghe trên loopback bên trong container.
+http://127.0.0.1:8080 {
+	bind 127.0.0.1
+	respond /healthz "ok" 200
+}

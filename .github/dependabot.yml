@@ -1,7 +1,13 @@
 # Dependabot mở PR cập nhật mỗi tuần, gom mọi cập nhật cùng một hệ vào một PR.
 # Bản vá bảo mật cũng gom thành một PR cho mỗi hệ, bằng nhóm có applies-to: security-updates.
 # cooldown: bản mới phải ra đủ 3 ngày mới được đề xuất, tránh bản độc vừa phát hành.
-# Prefix commit theo quy ước của repo: ci(deps) cho action; build(deps), build(deps-dev) cho gói npm và hook pre-commit.
+# Prefix commit theo quy ước của repo: ci(deps) cho action; build(deps), build(deps-dev) cho gói npm, gói Python, image nền và hook pre-commit.
+#
+# Chỗ ghim Dependabot không nâng được, phải nâng tay:
+# - entry của hook hadolint-docker trong .pre-commit-config.yaml (image hadolint theo tag và digest), nâng cùng rev của hook;
+# - GITLEAKS_VERSION, GITLEAKS_SHA256 và PRE_COMMIT_VERSION trong .github/workflows/ci.yaml;
+# - bản pnpm trong devEngines.packageManager của package.json và trong lệnh npm install -g của deploy/docker/hmi.Dockerfile.
+# Cặp ghim phải nâng cùng nhau nhưng thuộc hai hệ, nên đến trong hai PR riêng: uv (image uv trong core.Dockerfile, hook uv-pre-commit) và ruff (robot-core/uv.lock, hook ruff-pre-commit).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -48,4 +54,41 @@ updates:
       include: scope
     groups:
       pre-commit:
+        patterns: ["*"]
+
+  # Image nền trong deploy/docker/*.Dockerfile, ghim theo tag và digest.
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      docker:
+        patterns: ["*"]
+    # Python 3.14 và Node 26 LTS do ADR 0008 chọn; đổi dòng phiên bản là đổi quyết định, không phải một lần cập nhật.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  # Dependency Python của robot-core: pyproject.toml và uv.lock.
+  - package-ecosystem: uv
+    directory: /robot-core
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      uv:
+        patterns: ["*"]
+      uv-security:
+        applies-to: security-updates
         patterns: ["*"]

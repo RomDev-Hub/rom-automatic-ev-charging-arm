@@ -1,4 +1,4 @@
-# Kiểm tra trên mọi lần push vào main, develop và mọi PR: hook, quy ước commit, bí mật, giấy phép.
+# Kiểm tra trên mọi lần push vào main, develop và mọi PR: hook, quy ước commit, bí mật, giấy phép, test của robot-core và operator-ui, đầu-cuối trên stack mô phỏng.
 name: ci
 
 on:
@@ -20,16 +20,48 @@ env:
   GITLEAKS_VERSION: 8.30.1
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
   PRE_COMMIT_VERSION: 4.7.0
+  # Giấy phép dependency không bị cảnh báo, dạng mảng JSON; bước kê giấy phép npm và job kê giấy phép Python dùng chung danh sách này.
+  ALLOWED_LICENCES: '["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "BlueOak-1.0.0", "CC0-1.0", "Python-2.0", "MIT OR Apache-2.0", "AGPL-3.0-or-later"]'
 
 jobs:
   checks:
     runs-on: ubuntu-24.04
+    # Khoảng commit vừa push hoặc của PR, dùng cho commitlint và cho việc xét có chạy job windows hay không.
+    env:
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    outputs:
+      level1: ${{ steps.changes.outputs.level1 }}
+      build: ${{ steps.build_inputs.outputs.build }}
     steps:
       # Lấy toàn bộ lịch sử để kiểm từng commit; không lưu token vào .git/config.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # Job windows chỉ chạy khi khoảng commit đổi mã Python, HMI, file khai báo của pnpm hoặc chính workflow này (ADR 0008).
+      # Xét ở đây để không chạy job Windows khi thay đổi không cần tới nó; khoảng commit không xác định được (nhánh mới, push đè) thì vẫn chạy.
+      - name: Detect level 1 changes
+        id: changes
+        run: |
+          level1=true
+          if [ -n "$BASE_SHA" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null \
+            && git diff --quiet "${BASE_SHA}...${HEAD_SHA}" -- robot-core operator-ui package.json pnpm-workspace.yaml pnpm-lock.yaml .github/workflows/ci.yaml; then
+            level1=false
+          fi
+          echo "level1=${level1}" >> "$GITHUB_OUTPUT"
+
+      # Job build-artifacts chỉ chạy khi khoảng commit đổi Dockerfile, file khai báo hay lockfile mà image dùng, hoặc workflow phát hành; khoảng commit không xác định được thì vẫn chạy.
+      - name: Detect image build changes
+        id: build_inputs
+        run: |
+          build=true
+          if [ -n "$BASE_SHA" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null \
+            && git diff --quiet "${BASE_SHA}...${HEAD_SHA}" -- deploy/docker .dockerignore robot-core/pyproject.toml robot-core/uv.lock robot-core/.python-version robot-core/LICENSE package.json pnpm-workspace.yaml pnpm-lock.yaml operator-ui/package.json .github/workflows/release.yaml; then
+            build=false
+          fi
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
 
       # Cài đúng bản pnpm ghi trong devEngines của package.json.
       - name: Install pnpm from devEngines
@@ -78,9 +110,6 @@ jobs:
 
       # Kiểm thông điệp của mọi commit trong khoảng vừa push hoặc trong PR.
       - name: Lint commit messages
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           if [ -z "$BASE_SHA" ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
             range="$HEAD_SHA"
@@ -120,8 +149,7 @@ jobs:
           # Đoạn trong dấu nháy đơn là mã node; ${...} là biến của node chứ không phải của shell.
           # shellcheck disable=SC2016
           pnpm exec node -e '
-            const allowed = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD",
-              "BlueOak-1.0.0", "CC0-1.0", "Python-2.0", "MIT OR Apache-2.0", "AGPL-3.0-or-later"]);
+            const allowed = new Set(JSON.parse(process.env.ALLOWED_LICENCES));
             const inventory = require(process.argv[1]);
             for (const [license, packages] of Object.entries(inventory)) {
               if (!allowed.has(license)) {
@@ -129,3 +157,197 @@ jobs:
               }
             }
           ' "$RUNNER_TEMP/licenses.json"
+
+  # Cổng chốt của CI (ADR 0008): test của robot-core chạy trong target dev của image core, trên đúng thư viện hệ thống của image chạy thật.
+  python-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Lớp image lưu trong cache của GitHub Actions; mode=max giữ cả stage builder, nên ur_rtde chỉ build lại khi dependency đổi.
+      - name: Build the core dev image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/core.Dockerfile
+          target: dev
+          load: true
+          tags: ev-arm-core:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Test chạy không có mạng; một test bị bỏ qua, ví dụ test cần Pinocchio, cũng làm job thất bại (ADR 0008).
+      - name: Run pytest offline and fail on skipped tests
+        run: |
+          docker run --rm --network none ev-arm-core:ci pytest -ra | tee "$RUNNER_TEMP/pytest.log"
+          if grep -q '^SKIPPED' "$RUNNER_TEMP/pytest.log"; then
+            echo "::error::pytest skipped a test; the Linux job allows no skipped test"
+            exit 1
+          fi
+
+  # Đầu-cuối trên stack mô phỏng (ADR 0003): build image core (target runtime) và hmi với tag mà compose.sim.yaml dùng, rồi chạy scripts/e2e_sim.py trên chính hai image đó.
+  # Chờ python-linux: job này đọc cache mà python-linux vừa ghi nên không biên dịch ur_rtde lần thứ hai, và chạy đầu-cuối khi test của robot-core đỏ thì không thêm thông tin gì.
+  # Không chờ checks: checks kiểm quy ước commit, định dạng, bí mật và giấy phép, không đổi điều mà job này quan sát.
+  e2e-sim:
+    needs: python-linux
+    runs-on: ubuntu-24.04
+    # Đủ cho một lần biên dịch ur_rtde khi cache trống, ước 20–25 phút trên runner 2 nhân, cộng phần chạy.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Target dev mà python-linux build dựng trên target runtime, nên scope cache mặc định python-linux ghi đã có mọi lớp của image này.
+      # Không ghi lại vào scope đó: mỗi scope chỉ giữ lần ghi sau cùng, ghi đè thì mất các lớp riêng của target dev.
+      - name: Build the core runtime image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/core.Dockerfile
+          target: runtime
+          load: true
+          tags: ev-arm-core:sim
+          cache-from: type=gha
+
+      # Cùng chính sách cache với python-linux, ở scope riêng của hmi.
+      - name: Build the hmi image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/hmi.Dockerfile
+          load: true
+          tags: ev-arm-hmi:sim
+          cache-from: type=gha,scope=hmi
+          cache-to: type=gha,mode=max,scope=hmi
+
+      # Dựng stack từ hai image vừa build, không build lại; script thoát khác 0 khi có kiểm trượt.
+      - name: Run the end-to-end simulation check
+        run: python3 scripts/e2e_sim.py --no-build
+
+  # Test và bản build của operator-ui; lint, định dạng, kiểm kiểu và kiểm kiểu sinh từ contracts/ đã chạy dưới dạng hook trong job checks.
+  ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm from devEngines
+        run: |
+          version="$(node -p "require('./package.json').devEngines.packageManager.version")"
+          cd "$RUNNER_TEMP" && npm install -g "pnpm@${version}"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run operator-ui tests
+        run: pnpm --filter operator-ui run test
+
+      - name: Build operator-ui for production
+        run: pnpm --filter operator-ui run build
+
+  # Kê giấy phép của dependency Python đã khoá trong robot-core/uv.lock; chỉ cảnh báo, không làm CI đỏ (ADR 0011).
+  python-licences:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python dependency licences (warning only)
+        continue-on-error: true
+        run: python3 scripts/list_python_licences.py robot-core/uv.lock
+
+  # Mức 1 trên Windows (ADR 0008); chỉ chạy khi bước "Detect level 1 changes" của job checks báo khoảng commit có đổi.
+  windows:
+    needs: checks
+    if: needs.checks.outputs.level1 == 'true'
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # uv cùng bản với image uv ghim trong core.Dockerfile (ADR 0008), nên không có chỗ ghim thứ ba.
+      - name: Read the uv version from core.Dockerfile
+        id: uv
+        run: |
+          version="$(sed -nE 's#^FROM ghcr\.io/astral-sh/uv:([^@]+)@.*#\1#p' deploy/docker/core.Dockerfile)"
+          test -n "$version"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ steps.uv.outputs.version }}
+
+      - name: Install robot-core from uv.lock
+        working-directory: robot-core
+        run: uv sync --locked
+
+      - name: Run robot-core tests
+        working-directory: robot-core
+        run: uv run --locked pytest
+
+      - name: Type-check robot-core
+        working-directory: robot-core
+        run: uv run --locked mypy
+
+      - name: Install pnpm from devEngines
+        run: |
+          version="$(node -p "require('./package.json').devEngines.packageManager.version")"
+          cd "$RUNNER_TEMP" && npm install -g "pnpm@${version}"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run operator-ui tests
+        run: pnpm --filter operator-ui run test
+
+  # Build đủ image phát hành như job build của workflow release, mọi kiến trúc, nhưng không đẩy đi, để biết chắc build được trước khi merge.
+  # Chỉ chạy trên PR phát hành, PR vá gấp và PR đổi Dockerfile, file khai báo hay lockfile mà image dùng, để không build bốn image cho thay đổi không cần tới chúng.
+  # PR phát hành và PR vá gấp nhận ra theo nhánh release/X.Y.Z và hotfix/X.Y.Z.
+  build-artifacts:
+    needs: checks
+    if: >-
+      github.event_name == 'pull_request'
+      && (startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'hotfix/') || needs.checks.outputs.build == 'true')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        image: [core, hmi]
+        arch: [amd64, arm64]
+        include:
+          - image: core
+            target: runtime
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Cùng Dockerfile, target và nền tảng như workflow release; cache chỉ đọc.
+      - name: Build without pushing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/${{ matrix.image }}.Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          cache-from: type=gha

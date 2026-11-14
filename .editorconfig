@@ -20,3 +20,7 @@ trim_trailing_whitespace = false
 # Khớp với .gitattributes: cmd.exe cần CRLF.
 [*.{bat,cmd}]
 end_of_line = crlf
+
+# Caddyfile thụt lề bằng tab như `caddy fmt`; file lệch định dạng thì Caddy cảnh báo mỗi lần khởi động.
+[Caddyfile]
+indent_style = tab

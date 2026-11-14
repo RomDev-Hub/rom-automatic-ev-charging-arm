@@ -1,0 +1,43 @@
+# Loại khỏi build context của Docker những thứ không image nào cần hoặc không được nằm trong image (REQ-DEP-007).
+# Dockerfile chỉ COPY đúng đường dẫn nó dùng; file này giữ context gọn, và chặn bí mật hay dữ liệu của trạm từ trước khi gửi cho builder.
+
+# Git
+.git
+
+# Môi trường ảo, cache và bản build của Python
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+**/build
+**/dist
+
+# Gói và bản build của Node
+**/node_modules
+**/.pnpm-store
+**/*.tsbuildinfo
+
+# Log và bản ghi MCAP
+**/*.log
+**/*.mcap
+
+# Cấu hình trạm thật; repo chỉ giữ file mẫu, image không cần cả file mẫu
+deploy/site
+
+# Biến môi trường và bí mật
+**/.env
+**/.env.*
+
+# Weights của model; datasets/ và models/ chỉ chứa manifest, dữ liệu thật nằm ngoài Git
+**/*.onnx
+**/*.pt
+**/*.engine
+datasets
+models
+
+# Tài liệu; chỉ file Markdown ở gốc repo, để file đi kèm package trong mã nguồn không bị loại
+docs
+*.md

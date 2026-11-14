@@ -44,6 +44,10 @@ Chọn phương án 1. Volume là cơ chế lưu dữ liệu bền mà tài li�
 
 Mọi container chạy với rootfs chỉ đọc và user không phải root. Dữ liệu runtime chỉ nằm ở các chỗ trong bảng, không nằm trong image hay repo. Image chỉ chứa phần mềm và dữ liệu mặc định đi kèm, như `robot-core/src/robot_core/defaults/`. Với cấu hình và biến môi trường, repo chỉ giữ file mẫu (`deploy/site/station.example.json`, `deploy/.env.example`).
 
+User chạy service `core` là `ev-arm`, UID 10001, GID 10001, tạo trong `deploy/docker/core.Dockerfile`; service `hmi` chạy cùng UID và GID (`deploy/docker/hmi.Dockerfile`). UID và GID cố định vì volume đã có dữ liệu giữ chủ sở hữu cũ (mục Hệ quả), nên image về sau đổi UID sẽ không ghi được vào volume đó; số trên 10000 để không trùng tài khoản thường của host, mà Debian và Ubuntu cấp từ 1000 trở lên.
+
+Chỗ ghi ngoài các volume chỉ là tmpfs có giới hạn dung lượng, khai trong `deploy/compose.yaml`: `/tmp` của từng service (64 MiB với `core`), và `/data`, `/config` của Caddy trong `hmi`, thuộc UID 10001. Tmpfs nằm trong RAM và mất khi container khởi động lại, nên không giữ được dữ liệu runtime nào.
+
 Mỗi thư mục trong bảng đặt lại được bằng biến môi trường `EV_ARM_<TÊN>_DIR`, ví dụ `EV_ARM_RECORDINGS_DIR` thay cho `/var/lib/ev-arm/recordings`; biến không đặt thì dùng đường dẫn trong bảng. Khi chạy thẳng trên máy, không qua container (mức 1 trong `CONTRIBUTING.md`), nơi `/var/lib/ev-arm/` không dùng được, người phát triển đặt các biến này; robot-core không tự dò thư mục theo XDG Base Directory, để container và máy phát triển dùng chung một cơ chế.
 
 ### Hệ quả
@@ -100,15 +104,14 @@ Nguồn:
 - Docker Compose, dùng secret: <https://docs.docker.com/compose/how-tos/use-secrets/>
 - Docker, cấu hình logging driver và driver `local`: <https://docs.docker.com/engine/logging/configure/>, <https://docs.docker.com/engine/logging/drivers/local/>
 - Đặc tả file Compose cho volume và service (`name`, `read_only`, `user`, `tmpfs`, `logging`, `secrets`): <https://docs.docker.com/reference/compose-file/volumes/>, <https://docs.docker.com/reference/compose-file/services/>
+- Caddy, CA nội bộ (`tls internal`) và thư mục dữ liệu: <https://caddyserver.com/docs/caddyfile/directives/tls>, <https://caddyserver.com/docs/conventions#data-directory>
 
 ADR liên quan: 0008 (môi trường dev và phiên bản công cụ), 0010 (file lớn và dữ liệu), 0013 (cập nhật OTA), 0014 (dữ liệu gửi về máy chủ và quyền riêng tư), 0015 (vòng đời model), 0016 (danh tính thiết bị, khoá ký, hỗ trợ từ xa).
 
 Chưa quyết định, kèm việc sẽ chốt từng điểm:
 
 - Con số giới hạn dung lượng của `ev-arm-recordings` và cách áp giới hạn: chốt khi nối bộ ghi MCAP vào vòng giám sát.
-- Thông số xoay vòng log và chỗ khai driver `local` (từng service trong Compose hay mặc định của daemon trong `deploy/host/daemon.json`): chốt khi viết `deploy/compose.production.yaml`, file triển khai cho thiết bị. Khi chưa đặt, driver dùng mặc định của Docker: 5 file, mỗi file 20 MB, có nén.
-- UID và GID của user chạy service: chốt khi viết `deploy/docker/core.Dockerfile` và `deploy/docker/hmi.Dockerfile`.
-- Chỗ ghi tạm khi rootfs chỉ đọc, ví dụ `/tmp` (Compose có thuộc tính `tmpfs` cho việc này): chốt khi viết `deploy/compose.yaml`.
+- Thông số xoay vòng log, và có đặt thêm `local` làm driver mặc định của daemon trong `deploy/host/daemon.json` hay không: chốt khi viết `deploy/compose.production.yaml`, file triển khai cho thiết bị. `deploy/compose.yaml` đã khai driver `local` cho từng service; khi chưa đặt thông số, driver dùng mặc định của Docker: 5 file, mỗi file 20 MB, có nén.
 - Nơi giữ file nguồn của secret trên host, và cách lệnh `provision` của CLI đặt khoá thiết bị vào đó: chốt khi làm lệnh `provision`.
-- Chỗ đặt dữ liệu runtime của service `hmi` (Caddy), như chứng chỉ và khoá TLS; bảng trên chưa có dòng nào cho phần này: chốt khi làm TLS cho HMI.
+- Nơi thiết bị giữ chứng chỉ và khoá TLS thật của service `hmi` (Caddy): chốt khi viết `deploy/compose.production.yaml`. Đã chốt cho stack sim và dev: Caddy dùng CA nội bộ (`tls internal`), thư mục data và config của Caddy (`/data`, `/config`) là tmpfs, nên chứng chỉ được tạo lại mỗi lần container khởi động và `hmi` không có dữ liệu runtime nào cần volume.
 - Volume nào được sao lưu, lịch sao lưu và nơi giữ bản sao: chốt khi viết `scripts/volume-backup.sh` và `scripts/volume-restore.sh`.

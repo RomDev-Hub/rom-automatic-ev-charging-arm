@@ -23,13 +23,43 @@ Mã chạy và được kiểm ở ba mức. Mỗi người làm tới mức mà
 | 3 | PC Linux hoặc Jetson, làm việc qua SSH | test với tay máy, camera và GPU thật; máy đích cần Docker Engine và NVIDIA Container Toolkit |
 
 - Pinocchio và ur_rtde chỉ khai cho Linux, vì PyPI không có đủ bản cài sẵn cho các nền tảng khác. Trên máy khác, test cần Pinocchio tự bỏ qua; CI chạy trên Linux và coi việc bỏ qua đó là lỗi.
+- Trên Linux, `uv sync` build ur_rtde từ source vì PyPI không có wheel cho Python 3.14, nên máy cần trình biên dịch C/C++, CMake, git, Boost (system, thread, program_options) và mạng ra GitHub; trên Debian và Ubuntu là các gói `g++ cmake git libboost-system-dev libboost-thread-dev libboost-program-options-dev`.
 - Dev container (`.devcontainer/`) là tuỳ chọn, cho ai muốn mở repo trong môi trường Linux.
+
+Ở mức 2, test của robot-core chạy trong target dev của image `core`. Target này dựng trên target chạy thật nên dùng đúng thư viện hệ thống của image đó; test cần Pinocchio chạy, không test nào bị bỏ qua. Lần build đầu biên dịch ur_rtde, mất khoảng 6 phút trên amd64; các lần sau dùng lại cache.
+
+```bash
+docker build -f deploy/docker/core.Dockerfile --target dev -t ev-arm-core:dev .
+docker run --rm --network none ev-arm-core:dev pytest
+```
+
+Stack mô phỏng chạy bằng `deploy/compose.yaml` cộng `deploy/compose.sim.yaml`; thêm `-f deploy/compose.dev.yaml` sau cùng để chạy bằng target dev. Stack dùng volume riêng `ev-arm-sim-*`, không đụng volume của thiết bị. HMI mở ở <https://127.0.0.1:8443>, chỉ trên loopback; REST và WSS tới `core` cũng đi qua địa chỉ này, vì `core` không mở cổng nào. Chứng chỉ do CA nội bộ của Caddy cấp và được tạo lại mỗi lần container `hmi` khởi động, nên trình duyệt báo chứng chỉ không tin cậy; chấp nhận cảnh báo cho riêng địa chỉ này.
+
+```bash
+docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml up -d --build
+# Tạo tài khoản quản trị; mật khẩu được hỏi trên terminal, hoặc đọc một dòng từ stdin khi chạy với -T.
+docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml run --rm core robot-core admin create <tên>
+# Dừng stack và xoá volume của nó.
+docker compose -f deploy/compose.yaml -f deploy/compose.sim.yaml down -v
+```
+
+`python scripts/e2e_sim.py` kiểm cả stack mô phỏng từ đầu tới cuối: build image và dựng stack, tạo tài khoản quản trị, rồi qua <https://127.0.0.1:8443> kiểm trang và CSP, đăng nhập, phiên, telemetry, kênh WSS và vòng đời lệnh Dừng; xong thì xoá stack cùng volume, kể cả khi có bước trượt. Mỗi bước in một dòng, mã thoát 0 là đạt. Script chỉ dùng thư viện chuẩn của Python và lệnh `docker`, và không chạy khi project `ev-arm` đã có container. Với `--no-build`, script không build mà dựng stack từ hai image `ev-arm-core:sim` và `ev-arm-hmi:sim` đã có trên máy, thiếu image thì báo lỗi chứ không kéo từ registry; job `e2e-sim` của CI chạy cách này sau khi tự build hai image đó với cache của GitHub Actions.
 
 ## Kiểm tra
 
 - Hook do framework pre-commit quản lý, cấu hình ở `.pre-commit-config.yaml`; repo không dùng husky. `pre-commit install` cài hook `pre-commit` và `commit-msg` vào `.git/hooks/`. Thư mục này không nằm trong Git, nên mỗi bản clone phải tự cài.
 - Hook `no-commit-to-branch` chặn commit trên `main` và `develop`; trên GitHub, ruleset của hai nhánh này chặn mọi thay đổi không qua pull request (mục "Nhánh và lịch sử"). CI chạy các hook với `SKIP=no-commit-to-branch`, vì khi CI chạy trên `main` hay `develop` thì checkout đứng ở chính nhánh đó.
-- Hook pre-commit chạy ở mỗi commit; commitlint chạy ở hook commit-msg. Trên mỗi PR và mỗi lần `main` hay `develop` đổi, CI chạy commitlint trên từng commit mới và chạy lại các hook trên toàn bộ file của commit cuối. Kiểm từng commit qua hook thì chạy `git rebase -x` như mục "Nhánh và lịch sử".
+- Hook pre-commit chạy ở mỗi commit; commitlint chạy ở hook commit-msg. Kiểm từng commit qua hook thì chạy `git rebase -x` như mục "Nhánh và lịch sử".
+- Mỗi lần push vào `main`, `develop` và mỗi PR, CI (`.github/workflows/ci.yaml`) chạy các job:
+  - `checks`: commitlint trên từng commit mới, các hook trên toàn bộ file của commit cuối, quét bí mật trên toàn bộ lịch sử, kê giấy phép dependency npm;
+  - `python-linux`, cổng chốt: build target dev của image `core` rồi chạy pytest trong đó với `--network none`; có test bị bỏ qua thì job thất bại;
+  - `e2e-sim`, chạy sau `python-linux`: build target runtime của image `core` và image `hmi` với tag `:sim`, rồi chạy `python3 scripts/e2e_sim.py --no-build`; có kiểm trượt thì job thất bại;
+  - `ui`: test và bản build của `operator-ui`;
+  - `python-licences`: kê giấy phép dependency Python trong `robot-core/uv.lock`, lấy từ metadata trên PyPI của đúng bản đã khoá;
+  - `windows`: mức 1 trên Windows (`uv sync`, pytest và mypy của `robot-core`, test của `operator-ui`), chỉ chạy khi khoảng commit đổi mã Python, HMI, file khai báo hay lockfile của pnpm, hoặc chính `ci.yaml`; danh sách đường dẫn nằm ở bước `Detect level 1 changes` của job `checks`;
+  - `build-artifacts`, chỉ trên PR từ nhánh `release/X.Y.Z` hay `hotfix/X.Y.Z` và PR đổi Dockerfile, file khai báo hay lockfile mà image dùng (danh sách ở bước `Detect image build changes` của job `checks`): build image `core` (target runtime) và `hmi` cho amd64 và arm64 như workflow phát hành, nhưng không đẩy đi.
+- Hai bước kê giấy phép chỉ cảnh báo, không làm CI đỏ; danh sách giấy phép không bị cảnh báo là biến `ALLOWED_LICENCES` trong `ci.yaml`.
+- Với `operator-ui`, hook chạy ESLint, Prettier, kiểm kiểu và kiểm kiểu sinh từ `contracts/` còn khớp; test chạy bằng `pnpm --filter operator-ui run test`, bản build bằng `pnpm --filter operator-ui run build`. Sau khi đổi `contracts/`, sinh lại kiểu bằng `pnpm --filter operator-ui run contracts`.
 - Không dùng `--no-verify`.
 
 ## Ngôn ngữ
@@ -243,7 +273,7 @@ Dòng "This reverts commit" để nguyên như Git sinh ra. Header của commit 
 
 ### Commit của bot
 
-- Prefix do `.github/dependabot.yml` đặt: cập nhật gói npm và hook pre-commit dùng `build(deps)` hoặc `build(deps-dev)`; cập nhật GitHub Actions dùng `ci(deps)`.
+- Prefix do `.github/dependabot.yml` đặt: cập nhật gói npm, gói Python của `robot-core`, image nền trong `deploy/docker/` và hook pre-commit dùng `build(deps)` hoặc `build(deps-dev)`; cập nhật GitHub Actions dùng `ci(deps)`.
 - Commit của bot giữ tiếng Anh.
 - CI không chạy commitlint trên commit do `dependabot[bot]` viết, vì body commit do bot sinh có dòng dài và ghi chú phát hành.
 
@@ -266,11 +296,12 @@ Repo theo mô hình git-flow: `main` chỉ chứa bản đã phát hành, `devel
 ## Phát hành
 
 - Số phiên bản theo SemVer; Mr.Ròm quyết định khi nào phát hành và số phiên bản. Giữa hai bản phát hành, `CHANGELOG.md` chỉ có mục `## [Unreleased]`, và PR thường không đổi số phiên bản. Tag có dạng `vX.Y.Z`; số phiên bản lấy từ tag, không ghi tay vào file khai báo.
-- Chốt bản: nhánh `release/X.Y.Z` tách từ `origin/develop`, có commit `chore(release): phát hành X.Y.Z` chỉ sửa `CHANGELOG.md`: đổi `## [Unreleased]` thành `## [X.Y.Z] - YYYY-MM-DD`, biên tập nội dung mục đó, và mở lại một mục `## [Unreleased]` trống ở trên. Trên nhánh này chỉ sửa lỗi, không thêm tính năng. Mở PR từ nhánh này vào `main`.
-- Merge PR đó vào `main` là phát hành: workflow `.github/workflows/release.yaml` lấy số phiên bản từ tên nhánh, dừng nếu CHANGELOG không có mục `## [X.Y.Z]` hoặc tag `vX.Y.Z` đã có, rồi tạo tag `vX.Y.Z` cùng GitHub Release trên commit merge, với nội dung là mục của bản đó trong CHANGELOG. Luồng thường không tạo tag bằng tay; tag và bản phát hành đã đẩy lên không bao giờ bị xoá, dời hay dùng lại: ruleset chặn xoá và dời tag `v*`, và repo bật release immutability.
+- Chốt bản: nhánh `release/X.Y.Z` tách từ `origin/develop`, có commit `chore(release): phát hành X.Y.Z` chỉ sửa `CHANGELOG.md`: đổi `## [Unreleased]` thành `## [X.Y.Z] - YYYY-MM-DD`, biên tập nội dung mục đó, và mở lại một mục `## [Unreleased]` trống ở trên. Trên nhánh này chỉ sửa lỗi, không thêm tính năng. Mở PR từ nhánh này vào `main`; trên PR này, job `build-artifacts` của CI build đủ image `core` và `hmi` cho amd64 và arm64 nhưng không đẩy đi, nên biết chắc build được trước khi merge.
+- Merge PR đó vào `main` là phát hành: workflow `.github/workflows/release.yaml` lấy số phiên bản từ tên nhánh, dừng nếu CHANGELOG không có mục `## [X.Y.Z]` hoặc tag `vX.Y.Z` đã có, build image `core` (target runtime) và `hmi` cho amd64 và arm64, mỗi kiến trúc trên runner cùng kiến trúc, gắn SBOM, provenance và annotation OCI, đẩy lên GHCR theo digest rồi gộp thành image index có tag `X.Y.Z`; image xong mới tạo tag `vX.Y.Z` cùng GitHub Release trên commit merge, với nội dung là mục của bản đó trong CHANGELOG. Bước cuối của job `merge` in digest của từng image index. Mọi bước nằm trong một workflow vì tag do `GITHUB_TOKEN` tạo không kích hoạt workflow khác; tag và GitHub Release tạo sau cùng để build hỏng không để lại bản phát hành dở.
+- Luồng thường không tạo tag bằng tay; tag và bản phát hành đã đẩy lên không bao giờ bị xoá, dời hay dùng lại: ruleset chặn xoá và dời tag `v*`, và repo bật release immutability.
 - Sau khi phát hành, mở PR từ `main` vào `develop` và merge, để `develop` có mục CHANGELOG của bản vừa phát hành.
 - Vá gấp bản đã phát hành: nhánh `hotfix/X.Y.Z` tách từ `origin/main`, với X.Y.Z là bản PATCH kế tiếp, có commit sửa lỗi và commit `chore(release): phát hành X.Y.Z` thêm mục `## [X.Y.Z] - YYYY-MM-DD` vào CHANGELOG; mở PR vào `main`, merge là phát hành bản PATCH, rồi đưa `main` về `develop` như trên.
-- Workflow phát hành hỏng vì hạ tầng (runner, mạng, quyền, quota) thì sửa cài đặt rồi chạy lại các job hỏng của đúng lần chạy đó (`gh run rerun <id> --failed`).
+- Workflow phát hành hỏng vì hạ tầng (runner, mạng, quyền registry, quota) thì sửa cài đặt rồi chạy lại các job hỏng của đúng lần chạy đó (`gh run rerun <id> --failed`). Hỏng vì code hay cấu hình build trước khi có tag thì sửa qua nhánh `hotfix/X.Y.Z` cùng số phiên bản, vì bản đó chưa được phát hành.
 - `CHANGELOG.md`:
   - tiêu đề mỗi bản dạng `## [X.Y.Z] - YYYY-MM-DD`;
   - tên mục giữ tiếng Anh (Added, Changed, Deprecated, Removed, Fixed, Security), nội dung viết tiếng Việt.

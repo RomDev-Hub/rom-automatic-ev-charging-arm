@@ -1,5 +1,8 @@
 # Phát hành khi PR từ nhánh release/X.Y.Z hoặc hotfix/X.Y.Z được merge vào main:
-# kiểm số phiên bản và mục của bản đó trong CHANGELOG.md, rồi tạo tag vX.Y.Z và GitHub Release trên commit merge.
+# kiểm số phiên bản và mục của bản đó trong CHANGELOG.md; build image core (target runtime) và hmi cho amd64 và arm64, mỗi kiến trúc trên runner cùng kiến trúc, không qua giả lập (ADR 0008),
+# gắn SBOM và provenance, đẩy lên GHCR theo digest và gộp hai kiến trúc thành một image index (REQ-DEP-001, REQ-DEP-003, REQ-DEP-005, REQ-DEP-006);
+# image xong mới tạo tag vX.Y.Z và GitHub Release trên commit merge, để build hỏng không để lại bản phát hành dở.
+# Mọi bước nằm trong một workflow vì tag do GITHUB_TOKEN tạo không kích hoạt workflow khác.
 name: release
 
 on:
@@ -7,7 +10,7 @@ on:
     types: [closed]
     branches: [main]
 
-# Token mặc định chỉ được đọc repo; chỉ job publish được ghi nội dung repo để tạo tag và GitHub Release.
+# Token mặc định chỉ được đọc repo; chỉ job build và job merge được ghi package, chỉ job publish được ghi nội dung repo.
 permissions:
   contents: read
 
@@ -16,8 +19,12 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  # Giấy phép ghi vào annotation OCI của mọi manifest và image index (ADR 0011).
+  LICENSES: AGPL-3.0-or-later
+
 jobs:
-  # Kiểm mọi điều kiện trước khi tạo gì: số phiên bản lấy từ tên nhánh, CHANGELOG.md có mục không trống của bản đó, tag chưa có.
+  # Kiểm mọi điều kiện trước khi build: số phiên bản lấy từ tên nhánh, CHANGELOG.md có mục không trống của bản đó (REQ-DEP-006), tag chưa có.
   version:
     if: >-
       github.event.pull_request.merged == true
@@ -75,8 +82,123 @@ jobs:
             echo "RELEASE_NOTES_END"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+  build:
     needs: version
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [core, hmi]
+        arch: [amd64, arm64]
+        include:
+          - image: core
+            target: runtime
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/romdev-hub/ev-arm-${{ matrix.image }}
+      VERSION: ${{ needs.version.outputs.version }}
+      REVISION: ${{ github.event.pull_request.merge_commit_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Đẩy theo digest, chưa gắn tag. Cache chỉ đọc, từ job python-linux trên develop, nhánh mặc định, nên bản amd64 của core dùng lại ur_rtde đã build.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/${{ matrix.image }}.Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REVISION=${{ env.REVISION }}
+          annotations: |
+            manifest:org.opencontainers.image.version=${{ env.VERSION }}
+            manifest:org.opencontainers.image.revision=${{ env.REVISION }}
+            manifest:org.opencontainers.image.licenses=${{ env.LICENSES }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+
+      - name: Export the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [core, hmi]
+    env:
+      IMAGE: ghcr.io/romdev-hub/ev-arm-${{ matrix.image }}
+      VERSION: ${{ needs.version.outputs.version }}
+      REVISION: ${{ github.event.pull_request.merge_commit_sha }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Image index gắn tag X.Y.Z và mang cùng ba annotation với các manifest bên trong (REQ-DEP-006).
+      - name: Create and push the image index
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          sources=()
+          for digest in *; do
+            sources+=("${IMAGE}@sha256:${digest}")
+          done
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${VERSION}" \
+            --annotation "index:org.opencontainers.image.version=${VERSION}" \
+            --annotation "index:org.opencontainers.image.revision=${REVISION}" \
+            --annotation "index:org.opencontainers.image.licenses=${LICENSES}" \
+            "${sources[@]}"
+
+      - name: Inspect the image index
+        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+
+  # Image đã có trên GHCR mới tạo tag và GitHub Release trên commit merge, nội dung là mục của bản đó trong CHANGELOG.md.
+  publish:
+    needs: [version, merge]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
