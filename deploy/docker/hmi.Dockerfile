@@ -1,7 +1,7 @@
 # Image ghcr.io/romdev-hub/ev-arm-hmi (REQ-DEP-003): build operator-ui bằng pnpm ra file tĩnh, rồi Caddy phục vụ qua HTTPS và chuyển /api tới service core.
 # Build từ gốc repo: docker build -f deploy/docker/hmi.Dockerfile --build-arg VERSION=<X.Y.Z> --build-arg REVISION=<commit> .
 
-FROM node:26.13.0-trixie-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS build
+FROM node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 # Cùng bản pnpm với devEngines.packageManager trong package.json (ADR 0008).
 RUN npm install -g pnpm@12.18.0
 WORKDIR /src
@@ -15,7 +15,7 @@ COPY operator-ui/src operator-ui/src
 COPY robot-core/src/robot_core/locales robot-core/src/robot_core/locales
 RUN pnpm --filter operator-ui run build
 
-FROM caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee
+FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 ARG VERSION=0.0.0+local
 ARG REVISION=unknown
 # Image caddy đặt sẵn nhãn OCI title, description, url, documentation, source và vendor của chính Caddy; ghi đè cả sáu bằng thông tin của dự án này.
